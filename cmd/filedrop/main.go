@@ -103,7 +103,7 @@ func client() (*api.Client, *config.Config, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return api.New(cfg.APIURL(), cfg.Token), cfg, nil
+	return api.NewWithVersion(cfg.APIURL(), cfg.Token, version), cfg, nil
 }
 
 func runLogin(args []string) error {
@@ -116,7 +116,7 @@ func runLogin(args []string) error {
 	if err != nil {
 		return err
 	}
-	token, name, err := auth.Login(context.Background(), api.New(cfg.APIURL(), ""), auth.LoginOptions{
+	token, name, err := auth.Login(context.Background(), api.NewWithVersion(cfg.APIURL(), "", version), auth.LoginOptions{
 		ClientName: fmt.Sprintf("filedrop-cli/%s", version),
 		NoBrowser:  *noBrowser,
 		Out:        os.Stdout,

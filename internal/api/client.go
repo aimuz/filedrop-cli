@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -41,13 +42,27 @@ type Client struct {
 	BaseURL string
 	Token   string
 	HTTP    *http.Client
+	// userAgent 里带系统与架构：授权页用它显示「macOS · Apple Silicon」，
+	// 让用户能在确认前核对是不是自己这台机器。
+	userAgent string
+}
+
+// defaultUserAgent 形如 `filedrop-cli/0.1.0 (darwin/arm64)`，服务端只解析括号里的部分。
+func defaultUserAgent(version string) string {
+	return fmt.Sprintf("filedrop-cli/%s (%s/%s)", version, runtime.GOOS, runtime.GOARCH)
 }
 
 // New 创建客户端。Token 可以为空（登录前的设备码接口）。
 func New(baseURL, token string) *Client {
+	return NewWithVersion(baseURL, token, "dev")
+}
+
+// NewWithVersion 与 New 相同，但把版本号写进 User-Agent。
+func NewWithVersion(baseURL, token, version string) *Client {
 	return &Client{
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		Token:   token,
+		BaseURL:   strings.TrimRight(baseURL, "/"),
+		Token:     token,
+		userAgent: defaultUserAgent(version),
 		HTTP: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -78,7 +93,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		req.Header.Set("content-type", "application/json")
 	}
 	req.Header.Set("accept", "application/json")
-	req.Header.Set("user-agent", "filedrop-cli")
+	req.Header.Set("user-agent", c.userAgent)
 	if c.Token != "" {
 		req.Header.Set("authorization", "Bearer "+c.Token)
 	}
