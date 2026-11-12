@@ -3,6 +3,7 @@ package crypto
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,9 +37,13 @@ func loadVectors(t *testing.T) vectorFile {
 	t.Helper()
 	path := filepath.Join("testdata", "vectors.json")
 	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		// 向量是生成物、不进版本库：缺了跳过而不是失败，否则新 clone 下来 go test 直接红。
+		// 需要真正校验互通时，先按 testdata/README.md 生成。
+		t.Skip("缺少 testdata/vectors.json，跳过互通校验（生成方式见 testdata/README.md）")
+	}
 	if err != nil {
-		t.Fatalf("读取测试向量失败（%v）。生成方式见 testdata/README.md：\n"+
-			"  在服务器仓库根目录运行 pnpm --filter @filedrop/api test", err)
+		t.Fatalf("读取测试向量失败: %v", err)
 	}
 	var vectors vectorFile
 	if err := json.Unmarshal(raw, &vectors); err != nil {
