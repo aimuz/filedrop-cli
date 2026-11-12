@@ -149,7 +149,4 @@ const usage = `filedrop — 端到端加密的文件传递
 
 命令选项：
   filedrop help <命令>                 查看某个命令的选项，例如 filedrop help save
-
-环境变量：
-  FILEDROP_API_URL  API 地址，默认 https://filedrop.app
 `
