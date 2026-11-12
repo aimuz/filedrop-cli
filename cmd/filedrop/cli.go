@@ -37,27 +37,63 @@ func parse(fs *pflag.FlagSet, args []string) error {
 	return nil
 }
 
-// commandSpec 描述一个命令的用法：帮助里的一行概要，以及它的选项定义。
-// bind 为 nil 表示这个命令没有选项。
 // commandSpec 描述一个命令：怎么跑、怎么打用法、有哪些选项。
+// bind 为 nil 表示这个命令没有选项。
 type commandSpec struct {
 	run      func([]string) error
 	synopsis string
-	bind     func(*pflag.FlagSet)
+	// summary 是一两句话的说明，打印在用法行之后。
+	summary string
+	bind    func(*pflag.FlagSet)
 }
 
 // commands 既用于分发，也用于打印用法——选项说明只在 bind* 里写一次。
 // 用函数而不是包级变量：命令实现会回头调用 printCommandUsage，包级变量会成初始化环。
 func commandTable() map[string]commandSpec {
 	return map[string]commandSpec{
-		"login":  {run: runLogin, synopsis: "filedrop login [--no-browser]", bind: func(fs *pflag.FlagSet) { bindLoginFlags(fs, &loginFlags{}) }},
-		"logout": {run: runLogout, synopsis: "filedrop logout"},
-		"whoami": {run: runWhoami, synopsis: "filedrop whoami"},
-		"share":  {run: runShare, synopsis: "filedrop share <文件>... | --clipboard [选项]", bind: func(fs *pflag.FlagSet) { bindShareFlags(fs, &shareFlags{}) }},
-		"save":   {run: runSave, synopsis: "filedrop save <链接 | ID[#密钥]> [--out DIR] [--password PW]", bind: func(fs *pflag.FlagSet) { bindSaveFlags(fs, &saveFlags{}) }},
-		"list":   {run: runList, synopsis: "filedrop list"},
-		"rm":     {run: runRm, synopsis: "filedrop rm <ID>..."},
-		"quota":  {run: runQuota, synopsis: "filedrop quota"},
+		"login": {
+			run:      runLogin,
+			synopsis: "filedrop login [--no-browser]",
+			summary:  "登录账号。会打开浏览器，在那里面选 GitHub 或 Google，确认授权后命令行就登好了。",
+			bind:     func(fs *pflag.FlagSet) { bindLoginFlags(fs, &loginFlags{}) },
+		},
+		"logout": {
+			run:      runLogout,
+			synopsis: "filedrop logout",
+			summary:  "退出登录，并清掉本机保存的登录信息。已经发出去的文件不受影响。",
+		},
+		"whoami": {
+			run:      runWhoami,
+			synopsis: "filedrop whoami",
+			summary:  "查看当前登录的是哪个账号。",
+		},
+		"share": {
+			run:      runShare,
+			synopsis: "filedrop share <文件>... | --clipboard [选项]",
+			summary:  "发送文件，输出可以直接发给别人的链接。每个文件各得一个链接，默认 24 小时后自动删除。",
+			bind:     func(fs *pflag.FlagSet) { bindShareFlags(fs, &shareFlags{}) },
+		},
+		"save": {
+			run:      runSave,
+			synopsis: "filedrop save <链接 | ID[#密钥]> [--out DIR] [--password PW]",
+			summary:  "收到链接后把文件下载下来。不会覆盖同名文件，重名时自动改成「名字 (1).扩展名」。",
+			bind:     func(fs *pflag.FlagSet) { bindSaveFlags(fs, &saveFlags{}) },
+		},
+		"list": {
+			run:      runList,
+			synopsis: "filedrop list",
+			summary:  "列出账号里还没过期的文件。只显示 ID、大小和剩余时间——文件名是加密的，只有你自己能看到。",
+		},
+		"rm": {
+			run:      runRm,
+			synopsis: "filedrop rm <ID>...",
+			summary:  "删除文件，立刻释放占用的空间。链接随即失效，已经下载走的文件不受影响。可以一次删多个。",
+		},
+		"quota": {
+			run:      runQuota,
+			synopsis: "filedrop quota",
+			summary:  "查看已用空间和上限，以及账号里有多少个文件。",
+		},
 	}
 }
 
@@ -75,9 +111,13 @@ func printCommandUsage(name string) {
 		return
 	}
 	fmt.Printf("用法：%s\n", spec.synopsis)
+	if spec.summary != "" {
+		fmt.Printf("\n%s\n", spec.summary)
+	}
 	if spec.bind == nil {
 		return
 	}
+
 	fs := newFlags(name)
 	spec.bind(fs)
 	var lines []string
