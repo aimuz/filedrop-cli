@@ -50,8 +50,8 @@ func TestBearerAndErrorMapping(t *testing.T) {
 	}
 
 	_, err = client.Session(context.Background())
-	var apiErr *Error
-	if !errors.As(err, &apiErr) {
+	apiErr, ok := errors.AsType[*Error](err)
+	if !ok {
 		t.Fatalf("应返回结构化错误，得到 %v", err)
 	}
 	if apiErr.Status != 401 || apiErr.Code != "unauthorized" || !Unauthorized(err) {

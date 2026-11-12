@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
 var colorEnabled = detectColor()
@@ -39,12 +38,11 @@ func paint(code, s string) string {
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
-// Red / Green / Yellow / Dim / Bold 是常用的几种样式。
-func Red(s string) string    { return paint("31", s) }
-func Green(s string) string  { return paint("32", s) }
-func Yellow(s string) string { return paint("33", s) }
-func Dim(s string) string    { return paint("2", s) }
-func Bold(s string) string   { return paint("1", s) }
+// Red / Green / Dim / Bold 是常用的几种样式。
+func Red(s string) string   { return paint("31", s) }
+func Green(s string) string { return paint("32", s) }
+func Dim(s string) string   { return paint("2", s) }
+func Bold(s string) string  { return paint("1", s) }
 
 // IsTTY 判断标准输入是否接在终端上。
 func IsTTY() bool {
@@ -134,11 +132,21 @@ func (p *Progress) Update(done int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.done = done
-	if time.Since(p.last) < 100*time.Millisecond {
+	p.renderLocked()
+}
+
+// Add 按增量推进进度，供并行下载使用（块不是按顺序完成的）。
+func (p *Progress) Add(delta int64) {
+	if p == nil || !p.enabled || delta <= 0 {
 		return
 	}
-	p.last = time.Now()
-	p.render()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.done += delta
+	if p.done > p.total {
+		p.done = p.total
+	}
+	p.renderLocked()
 }
 
 // Finish 结束并换行。
@@ -149,8 +157,21 @@ func (p *Progress) Finish() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.done = p.total
-	p.render()
+	p.renderLocked()
 	fmt.Fprintln(p.out)
+}
+
+// renderLocked 在持锁状态下渲染，并按 100ms 节流；
+// 并行下载会频繁调用，不节流会把终端刷爆。
+func (p *Progress) renderLocked() {
+	if !p.enabled {
+		return
+	}
+	if time.Since(p.last) < 100*time.Millisecond {
+		return
+	}
+	p.last = time.Now()
+	p.render()
 }
 
 func (p *Progress) render() {
@@ -190,16 +211,16 @@ func Expires(epochMS int64) string {
 		return "已过期"
 	}
 	left = left.Round(time.Minute)
-	if left < time.Minute {
+	switch {
+	case left < time.Minute:
 		return "不到 1 分钟"
-	}
-	if left < time.Hour {
+	case left < time.Hour:
 		return fmt.Sprintf("还有 %d 分钟", int(left.Minutes()))
-	}
-	if left < 48*time.Hour {
+	case left < 48*time.Hour:
 		return fmt.Sprintf("还有 %d 小时", int(left.Hours()))
+	default:
+		return fmt.Sprintf("还有 %d 天", int(left.Hours()/24))
 	}
-	return fmt.Sprintf("还有 %d 天", int(left.Hours()/24))
 }
 
 // OpenBrowser 尽力打开系统浏览器；失败不影响主流程。
@@ -241,13 +262,4 @@ func CopyToClipboard(text string) error {
 		}
 	}
 	return fmt.Errorf("找不到可用的剪贴板工具")
-}
-
-// Truncate 按显示宽度截断字符串（粗略按 rune 计）。
-func Truncate(s string, max int) string {
-	if utf8.RuneCountInString(s) <= max {
-		return s
-	}
-	runes := []rune(s)
-	return string(runes[:max-1]) + "…"
 }

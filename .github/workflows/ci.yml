@@ -12,10 +12,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.27'
           cache: true
       - run: go vet ./...
       - run: gofmt -l . | tee /tmp/gofmt.out && test ! -s /tmp/gofmt.out
+      # go fix 发现的所有现代化改写应当已经合入；有输出说明有代码没跟上。
+      - run: go fix -diff ./...
       - run: go test ./... -race -count=1
       - run: go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o filedrop ./cmd/filedrop
 
@@ -37,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.27'
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}

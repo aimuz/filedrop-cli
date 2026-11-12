@@ -1,5 +1,8 @@
 module github.com/aimuz/filedrop-cli
 
-go 1.24
+go 1.27
 
-require golang.org/x/text v0.28.0
+require (
+	github.com/spf13/pflag v1.1.0
+	golang.org/x/text v0.28.0
+)

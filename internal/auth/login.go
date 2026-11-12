@@ -75,8 +75,7 @@ func Login(ctx context.Context, client *api.Client, opts LoginOptions) (token, a
 		poll, err := client.DevicePoll(ctx, start.Code)
 		if err != nil {
 			// 瞬时网络错误继续重试；令牌无关。
-			var apiErr *api.Error
-			if errors.As(err, &apiErr) && apiErr.Status < 500 {
+			if apiErr, ok := errors.AsType[*api.Error](err); ok && apiErr.Status < 500 {
 				return "", "", err
 			}
 			continue

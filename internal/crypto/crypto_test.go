@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -148,7 +149,7 @@ func TestRoundTrip(t *testing.T) {
 
 	var out []byte
 	lastPlain := PaddedLastChunkSize(int64(len(plain)))
-	for index := 0; index < chunks; index++ {
+	for index := range chunks {
 		last := index == chunks-1
 		start := index * ChunkSize
 		end := min(start+ChunkSize, len(plain))
@@ -241,3 +242,43 @@ func TestPaddedSizes(t *testing.T) {
 		}
 	}
 }
+
+// 复用缓冲区是纯性能特性，结果看不出来；这里直接验证「用到的确实是同一块内存」。
+func TestOpenChunkToReusesBuffer(t *testing.T) {
+	master := []byte("0123456789abcdef0123456789abcdef")
+	fileID := "fQdGQ7ALzoyhsnN01te_GA"
+	keys, err := DeriveKeys(master, fileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var plain []byte
+	var first uintptr
+	for index := range 3 {
+		last := index == 2
+		var sealed []byte
+		if last {
+			sealed, err = keys.SealChunk(fileID, index, true, make([]byte, PadBlock))
+		} else {
+			sealed, err = keys.SealChunk(fileID, index, false, make([]byte, ChunkSize))
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 记录底层数组地址：除第一次外都应该落在同一块内存上。
+		before := plain
+		plain, err = keys.OpenChunkTo(plain, fileID, index, last, sealed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if before == nil {
+			first = pointerOf(plain)
+			continue
+		}
+		if pointerOf(plain) != first {
+			t.Fatalf("第 %d 块换了新缓冲，复用失效", index)
+		}
+	}
+}
+
+func pointerOf(b []byte) uintptr { return reflect.ValueOf(b).Pointer() }

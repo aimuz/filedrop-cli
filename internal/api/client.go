@@ -33,8 +33,8 @@ func (e *Error) Error() string {
 
 // Unauthorized 判断错误是否是未登录（令牌失效）。
 func Unauthorized(err error) bool {
-	var apiErr *Error
-	return errors.As(err, &apiErr) && apiErr.Status == 401
+	apiErr, ok := errors.AsType[*Error](err)
+	return ok && apiErr.Status == 401
 }
 
 // Client 调用服务端接口。BaseURL 末尾没有斜杠。

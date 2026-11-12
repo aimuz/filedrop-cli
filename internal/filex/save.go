@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -83,6 +82,8 @@ type SaveOptions struct {
 	Password func() (string, error)
 	// Progress 可以是 nil。
 	Progress *term.Progress
+	// Concurrency 是同时下载的分块数；0 表示用默认值。
+	Concurrency int
 }
 
 // Result 是一次下载的结果。
@@ -100,8 +101,7 @@ func Save(ctx context.Context, client *api.Client, raw string, opts SaveOptions)
 
 	info, err := client.FileInfo(ctx, target.FileID)
 	if err != nil {
-		var apiErr *api.Error
-		if errors.As(err, &apiErr) && apiErr.Status == 404 {
+		if apiErr, ok := errors.AsType[*api.Error](err); ok && apiErr.Status == 404 {
 			return nil, errors.New("文件不存在、已过期或已被删除")
 		}
 		return nil, err
@@ -136,7 +136,7 @@ func Save(ctx context.Context, client *api.Client, raw string, opts SaveOptions)
 
 	downloadURL, err := client.Download(ctx, target.FileID)
 	if err != nil {
-		return nil, err
+		return nil, downloadError(err)
 	}
 
 	out, err := openSink(opts.OutDir, meta.Name)
@@ -150,7 +150,7 @@ func Save(ctx context.Context, client *api.Client, raw string, opts SaveOptions)
 		}
 	}()
 
-	if err := drain(ctx, target.FileID, downloadURL, info.EncryptedSize, meta, keys, out, opts.Progress); err != nil {
+	if err := newTask(client, target.FileID, downloadURL, info, keys, meta, out, opts.Progress).Download(ctx, opts.Concurrency); err != nil {
 		return nil, err
 	}
 	if err := out.close(); err != nil {
@@ -160,78 +160,21 @@ func Save(ctx context.Context, client *api.Client, raw string, opts SaveOptions)
 	return &Result{Path: out.path, Meta: meta}, nil
 }
 
-// drain 按块 Range 下载并按块认证解密；任何一块失败都中止。
-func drain(
-	ctx context.Context,
-	fileID, downloadURL string,
-	encryptedSize int64,
-	meta crypto.Meta,
-	keys *crypto.Keys,
-	out *sink,
-	progress *term.Progress,
-) error {
-	if progress != nil {
-		progress.Start("下载", meta.Size)
+// downloadAgain 向服务端再要一次预签名地址（会消耗一次下载次数）。
+func downloadAgain(ctx context.Context, client *api.Client, fileID string) (string, error) {
+	url, err := client.Download(ctx, fileID)
+	if err != nil {
+		return "", downloadError(err)
 	}
-	var written int64
-	for index := 0; index < meta.ChunkCount; index++ {
-		last := index == meta.ChunkCount-1
-		start := int64(index) * crypto.CiphertextChunkSize
-		end := start + crypto.CiphertextChunkSize - 1
-		if last {
-			end = encryptedSize - 1
-		}
-		sealed, err := fetchRange(ctx, downloadURL, start, end)
-		if err != nil {
-			return err
-		}
-		plain, err := keys.OpenChunk(fileID, index, last, sealed)
-		if err != nil {
-			return err
-		}
-		// 最后一块带随机填充，按元数据里的真实大小裁掉。
-		content := plain
-		if last {
-			keep := meta.Size - int64(index)*crypto.ChunkSize
-			if keep < int64(len(plain)) {
-				content = plain[:keep]
-			}
-		}
-		if err := out.write(content); err != nil {
-			return err
-		}
-		written += int64(len(content))
-		if progress != nil {
-			progress.Update(written)
-		}
-	}
-	if written != meta.Size {
-		return errors.New("解密后的大小与元数据不一致，文件可能不完整")
-	}
-	if progress != nil {
-		progress.Finish()
-	}
-	return nil
+	return url, nil
 }
 
-func fetchRange(ctx context.Context, rawURL string, start, end int64) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, err
+// downloadError 把「下载次数用完」「文件已不存在」讲清楚。
+func downloadError(err error) error {
+	if apiErr, ok := errors.AsType[*api.Error](err); ok && apiErr.Status == 404 {
+		return errors.New("文件已过期、已被删除，或已达到下载次数上限")
 	}
-	req.Header.Set("range", fmt.Sprintf("bytes=%d-%d", start, end))
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("下载失败: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("下载失败: HTTP %d", resp.StatusCode)
-	}
-	if resp.StatusCode == http.StatusOK && start != 0 {
-		return nil, errors.New("对象存储忽略了 Range 请求，无法分块下载")
-	}
-	return io.ReadAll(io.LimitReader(resp.Body, end-start+2))
+	return err
 }
 
 // sink 是唯一的写出口：文件或标准输出。失败时丢弃已写内容。
@@ -239,15 +182,42 @@ type sink struct {
 	file   *os.File
 	stdout bool
 	path   string
+	// writer 是标准输出的去处，测试里换成 bytes.Buffer；为空时写 os.Stdout。
+	writer io.Writer
 }
 
 func (s *sink) write(p []byte) error {
 	if s.stdout {
-		_, err := os.Stdout.Write(p)
+		w := s.writer
+		if w == nil {
+			w = os.Stdout
+		}
+		_, err := w.Write(p)
 		return err
 	}
 	_, err := s.file.Write(p)
 	return err
+}
+
+// writeAt 按偏移写入，供并行下载使用。
+//
+// WriteAt 不改变文件位置，多个 goroutine 可以同时写不同偏移而互不干扰；
+// 这样某个块卡在网络上时，后面的块照样能落盘。标准输出不支持随机写。
+func (s *sink) writeAt(p []byte, offset int64) error {
+	if s.stdout {
+		return errors.New("标准输出不支持并发写入")
+	}
+	_, err := s.file.WriteAt(p, offset)
+	return err
+}
+
+// truncate 把文件截到指定长度：并行写会留下空洞（未写区域），
+// 最后一块若比前面的块短，也必须显式截断。
+func (s *sink) truncate(size int64) error {
+	if s.stdout {
+		return nil
+	}
+	return s.file.Truncate(size)
 }
 
 func (s *sink) close() error {

@@ -169,25 +169,38 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 }
 
 // ChunkNonce 是第 index 块的 nonce：4 字节零 + 8 字节大端序号。
-func ChunkNonce(index int) []byte {
-	nonce := make([]byte, nonceLength)
+// 用定长数组返回，避免每块都分配。
+func ChunkNonce(index int) [nonceLength]byte {
+	var nonce [nonceLength]byte
 	binary.BigEndian.PutUint32(nonce[4:8], uint32(index>>32))
 	binary.BigEndian.PutUint32(nonce[8:12], uint32(index))
 	return nonce
 }
 
-// ChunkAAD 是分块的附加数据：版本前缀 ‖ fileId ‖ 序号 ‖ 是否最后一块。
-func ChunkAAD(fileID string, index int, last bool) []byte {
-	id, _ := FileIDBytes(fileID)
-	out := make([]byte, 0, len(protocolVersion)+FileIDLength+5)
-	out = append(out, protocolVersion...)
-	out = append(out, id...)
-	var tail [5]byte
-	binary.BigEndian.PutUint32(tail[:4], uint32(index))
-	if last {
-		tail[4] = 1
+// aadPrefix 把 AAD 的固定前缀（版本 ‖ fileId）编码进定长数组，
+// 每块只需要改末尾 5 个字节。返回数组而不是切片，调用者可以放在栈上。
+type aad [len(protocolVersion) + FileIDLength + 5]byte
+
+// chunkAAD 组装第 index 块的附加数据。
+func chunkAAD(fileID string, index int, last bool) aad {
+	var out aad
+	copy(out[:], protocolVersion)
+	if id, err := FileIDBytes(fileID); err == nil {
+		copy(out[len(protocolVersion):], id)
 	}
-	return append(out, tail[:]...)
+	binary.BigEndian.PutUint32(out[len(protocolVersion)+FileIDLength:], uint32(index))
+	if last {
+		out[len(out)-1] = 1
+	}
+	return out
+}
+
+// ChunkAAD 是分块的附加数据：版本前缀 ‖ fileId ‖ 序号 ‖ 是否最后一块。
+//
+// 保留切片形式供测试与外部实现对照；加密/解密走 chunkAAD，避免每次堆分配。
+func ChunkAAD(fileID string, index int, last bool) []byte {
+	a := chunkAAD(fileID, index, last)
+	return a[:]
 }
 
 func metaAAD(fileID string) []byte {
@@ -198,22 +211,39 @@ func metaAAD(fileID string) []byte {
 }
 
 // SealChunk 加密一块明文；last 表示这是最后一块。
+//
+// 返回值是新分配的切片。批量加密时用 SealChunkTo 复用缓冲区，省掉每块 8 MiB 的分配。
 func (k *Keys) SealChunk(fileID string, index int, last bool, plain []byte) ([]byte, error) {
+	return k.SealChunkTo(nil, fileID, index, last, plain)
+}
+
+// SealChunkTo 加密到 dst（容量不足时自动扩容）。
+// dst 可以反复复用：返回的是 dst 的前 len(plain)+16 字节。
+func (k *Keys) SealChunkTo(dst []byte, fileID string, index int, last bool, plain []byte) ([]byte, error) {
 	if len(plain) > ChunkSize {
 		return nil, formatError("第 %d 块超过 8 MiB", index)
 	}
 	if !last && len(plain) != ChunkSize {
 		return nil, formatError("非最后一块第 %d 块必须是 8 MiB", index)
 	}
-	return k.File.Seal(nil, ChunkNonce(index), plain, ChunkAAD(fileID, index, last)), nil
+	nonce := ChunkNonce(index)
+	aad := chunkAAD(fileID, index, last)
+	return k.File.Seal(dst[:0], nonce[:], plain, aad[:]), nil
 }
 
 // OpenChunk 解密一块密文。任何失败都视为认证失败：调用方必须中止并丢弃已写内容。
 func (k *Keys) OpenChunk(fileID string, index int, last bool, sealed []byte) ([]byte, error) {
+	return k.OpenChunkTo(nil, fileID, index, last, sealed)
+}
+
+// OpenChunkTo 与 OpenChunk 相同，但写入 dst 以复用缓冲区。
+func (k *Keys) OpenChunkTo(dst []byte, fileID string, index int, last bool, sealed []byte) ([]byte, error) {
 	if len(sealed) < TagLength {
 		return nil, formatError("第 %d 块密文短于认证标签", index)
 	}
-	plain, err := k.File.Open(nil, ChunkNonce(index), sealed, ChunkAAD(fileID, index, last))
+	nonce := ChunkNonce(index)
+	aad := chunkAAD(fileID, index, last)
+	plain, err := k.File.Open(dst[:0], nonce[:], sealed, aad[:])
 	if err != nil {
 		return nil, formatError("第 %d 块校验失败，文件可能被篡改或链接不完整", index)
 	}

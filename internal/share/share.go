@@ -15,14 +15,73 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/aimuz/filedrop-cli/internal/api"
+	"github.com/aimuz/filedrop-cli/internal/config"
 	"github.com/aimuz/filedrop-cli/internal/crypto"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
 // MaxFileSize 与网页版一致：单文件 1 GiB。
 const MaxFileSize = 1024 * 1024 * 1024
+
+// Content 是要分享的内容：磁盘上的文件，或者来自剪贴板的文本。
+//
+// Name 是放进加密元数据的文件名（会写进对方的下载目录），Base 是输出链接所用的地址。
+type Content struct {
+	Name string
+	Base string
+	open func() (io.ReadCloser, error)
+	size int64
+}
+
+// FromPath 指向磁盘上的文件。
+func FromPath(path, base string) (*Content, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, errors.New("不能分享目录，请指定文件")
+	}
+	if info.Size() > MaxFileSize {
+		return nil, fmt.Errorf("文件超过单文件上限 %s", term.Bytes(MaxFileSize))
+	}
+	return &Content{
+		Name: filepath.Base(path),
+		Base: base,
+		size: info.Size(),
+		open: func() (io.ReadCloser, error) { return os.Open(path) },
+	}, nil
+}
+
+// textName 是剪贴板文本的默认文件名；扩展名由内容猜出来，方便对方双击打开。
+func textName(text string) string {
+	trimmed := strings.TrimSpace(text)
+	switch {
+	case strings.HasPrefix(trimmed, "{"), strings.HasPrefix(trimmed, "["):
+		return "clipboard.json"
+	case strings.HasPrefix(trimmed, "<"):
+		return "clipboard.html"
+	default:
+		return "clipboard.txt"
+	}
+}
+
+// FromText 把一段文本当作文件分享（例如 `filedrop share --clipboard`）。
+func FromText(text, base string) (*Content, error) {
+	size := int64(len(text))
+	if size > MaxFileSize {
+		return nil, fmt.Errorf("内容超过单文件上限 %s", term.Bytes(MaxFileSize))
+	}
+	return &Content{
+		Name: textName(text),
+		Base: base,
+		size: size,
+		open: func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader(text)), nil },
+	}, nil
+}
 
 // Options 控制一次分享。
 type Options struct {
@@ -38,29 +97,40 @@ type Options struct {
 
 // File 加密并上传一个文件，返回下载链接。
 func File(ctx context.Context, client *api.Client, path string, opts Options) (string, error) {
-	info, err := os.Stat(path)
+	content, err := FromPath(path, client.BaseURL)
 	if err != nil {
 		return "", err
 	}
-	if info.IsDir() {
-		return "", errors.New("不能分享目录，请指定文件")
-	}
-	if info.Size() > MaxFileSize {
-		return "", fmt.Errorf("文件超过单文件上限 %s", term.Bytes(MaxFileSize))
-	}
+	return Upload(ctx, client, content, opts)
+}
 
+// Link 拼出下载链接；wrap 为 nil 时把主密钥放在 # 之后。
+func Link(base, fileID string, masterKey []byte, wrapped bool) string {
+	base = strings.TrimRight(base, "/")
+	if base == "" {
+		base = config.DefaultAPIURL
+	}
+	link := base + "/d/" + fileID
+	if wrapped {
+		return link
+	}
+	return link + "#" + crypto.Base64URL(masterKey)
+}
+
+// Upload 加密并上传，返回下载链接。
+func Upload(ctx context.Context, client *api.Client, content *Content, opts Options) (string, error) {
 	masterKey, err := crypto.RandomBytes(crypto.MasterKeyLength)
 	if err != nil {
 		return "", err
 	}
 
 	// 先流式计算明文 SHA-256：服务端用它做重复与黑名单检查。
-	digest, err := hashFile(path)
+	digest, err := hashContent(content)
 	if err != nil {
 		return "", err
 	}
-	chunkCount := crypto.ExpectedChunkCount(info.Size())
-	encryptedSize := crypto.EncryptedSizeFor(info.Size())
+	chunkCount := crypto.ExpectedChunkCount(content.size)
+	encryptedSize := crypto.EncryptedSizeFor(content.size)
 
 	var wrap *api.Wrap
 	if opts.Password != "" {
@@ -73,8 +143,7 @@ func File(ctx context.Context, client *api.Client, path string, opts Options) (s
 
 	var maxDownloads *int
 	if opts.MaxDownloads > 0 {
-		value := opts.MaxDownloads
-		maxDownloads = &value
+		maxDownloads = new(opts.MaxDownloads)
 	}
 
 	created, err := client.CreateFile(ctx, api.CreateFileRequest{
@@ -98,13 +167,13 @@ func File(ctx context.Context, client *api.Client, path string, opts Options) (s
 	if err != nil {
 		return "", err
 	}
-	meta := crypto.NewMeta(filepath.Base(path), info.Size(), contentType(path), chunkCount)
+	meta := crypto.NewMeta(content.Name, content.size, contentType(content.Name), chunkCount)
 	metaCipher, err := keys.SealMeta(created.FileID, meta)
 	if err != nil {
 		return "", err
 	}
 
-	parts, err := uploadParts(ctx, client, created.FileID, path, info.Size(), keys, urls, opts.Progress)
+	parts, err := uploadParts(ctx, client, created.FileID, content, keys, urls, opts.Progress)
 	if err != nil {
 		return "", err
 	}
@@ -112,16 +181,12 @@ func File(ctx context.Context, client *api.Client, path string, opts Options) (s
 		return "", uploadError(err)
 	}
 
-	base := strings.TrimRight(client.BaseURL, "/") + "/d/" + created.FileID
-	if wrap != nil {
-		return base, nil
-	}
-	return base + "#" + crypto.Base64URL(masterKey), nil
+	return Link(content.Base, created.FileID, masterKey, wrap != nil), nil
 }
 
 func uploadError(err error) error {
-	var apiErr *api.Error
-	if !errors.As(err, &apiErr) {
+	apiErr, ok := errors.AsType[*api.Error](err)
+	if !ok {
 		return err
 	}
 	if apiErr.Code == "limit_exceeded" {
@@ -153,17 +218,37 @@ func parseUsage(message string) (used, quota int64, ok bool) {
 	return used, quota, true
 }
 
-func hashFile(path string) (string, error) {
-	f, err := os.Open(path)
+const (
+	// hashBufferSize 是整文件哈希的读缓冲。
+	//
+	// io.Copy 默认只用 32 KB，SHA-256 的 SIMD 实现按块搬运数据，
+	// 小写入会把吞吐压到 ~2 GB/s；1 MB 缓冲能到 ~3 GB/s（接近纯内存哈希的上限）。
+	hashBufferSize = 1 << 20
+)
+
+// hashBuffers 复用哈希读缓冲，避免每次分享都分配 1 MB。
+var hashBuffers = sync.Pool{
+	New: func() any {
+		buffer := make([]byte, hashBufferSize)
+		return &buffer
+	},
+}
+
+func hashContent(content *Content) (string, error) {
+	r, err := content.open()
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	digest := sha256.New()
-	if _, err := io.Copy(digest, f); err != nil {
+	defer r.Close()
+
+	buffer := hashBuffers.Get().(*[]byte)
+	defer hashBuffers.Put(buffer)
+
+	hasher := sha256.New()
+	if _, err := io.CopyBuffer(hasher, r, *buffer); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(digest.Sum(nil)), nil
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 // contentType 写进加密元数据，供浏览器下载时提示。
@@ -185,6 +270,8 @@ func contentType(path string) string {
 		return "text/plain"
 	case ".json":
 		return "application/json"
+	case ".html", ".htm":
+		return "text/html"
 	case ".zip":
 		return "application/zip"
 	case ".mp4":
@@ -204,21 +291,23 @@ func uploadParts(
 	ctx context.Context,
 	client *api.Client,
 	fileID string,
-	path string,
-	size int64,
+	content *Content,
 	keys *crypto.Keys,
 	urls map[int]string,
 	progress *term.Progress,
 ) ([]api.CompletedPart, error) {
-	f, err := os.Open(path)
+	r, err := content.open()
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer r.Close()
 
+	size := content.size
 	chunkCount := crypto.ExpectedChunkCount(size)
 	lastPlainLength := crypto.PaddedLastChunkSize(size)
 	plain := make([]byte, crypto.ChunkSize)
+	// 密文缓冲区复用：每块 8 MiB，不复用的话 1 GiB 文件要额外分配 1 GiB 内存。
+	sealed := make([]byte, 0, crypto.CiphertextChunkSize)
 	completed := make([]api.CompletedPart, 0, chunkCount)
 
 	if progress != nil {
@@ -226,7 +315,7 @@ func uploadParts(
 	}
 	var sent int64
 
-	for index := 0; index < chunkCount; index++ {
+	for index := range chunkCount {
 		last := index == chunkCount-1
 		length := crypto.ChunkSize
 		if last {
@@ -237,12 +326,12 @@ func uploadParts(
 			contentLength = int(size - int64(index)*crypto.ChunkSize)
 		}
 
-		n, err := io.ReadFull(f, plain[:contentLength])
+		n, err := io.ReadFull(r, plain[:contentLength])
 		if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("读取 %s 失败: %w", path, err)
+			return nil, fmt.Errorf("读取 %s 失败: %w", content.Name, err)
 		}
 		if n != contentLength {
-			return nil, fmt.Errorf("读取 %s 失败：文件在传输期间被改动", path)
+			return nil, fmt.Errorf("读取 %s 失败：文件在传输期间被改动", content.Name)
 		}
 		if last && length > contentLength {
 			// 最后一块用随机字节补到 64 KiB 的整数倍（与网页版一致）。
@@ -253,7 +342,7 @@ func uploadParts(
 			copy(plain[contentLength:length], random)
 		}
 
-		sealed, err := keys.SealChunk(fileID, index, last, plain[:length])
+		sealed, err = keys.SealChunkTo(sealed, fileID, index, last, plain[:length])
 		if err != nil {
 			return nil, err
 		}
