@@ -23,6 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
@@ -386,9 +388,16 @@ func UnwrapMasterKey(w Wrap, password string) ([]byte, error) {
 	return master, nil
 }
 
+// kdfPattern 对应 TypeScript 侧的 /^pbkdf2-sha256-([0-9]{3,9})k$/。
+var kdfPattern = regexp.MustCompile(`^pbkdf2-sha256-([0-9]{3,9})k$`)
+
 func parseKDF(kdf string) (int, error) {
-	var thousands int
-	if _, err := fmt.Sscanf(kdf, "pbkdf2-sha256-%dk", &thousands); err != nil {
+	match := kdfPattern.FindStringSubmatch(kdf)
+	if match == nil {
+		return 0, formatError("不支持的口令派生算法 %q", kdf)
+	}
+	thousands, err := strconv.Atoi(match[1])
+	if err != nil {
 		return 0, formatError("不支持的口令派生算法 %q", kdf)
 	}
 	iterations := thousands * 1000

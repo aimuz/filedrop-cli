@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/aimuz/filedrop-cli/internal/api"
 	"github.com/aimuz/filedrop-cli/internal/auth"
@@ -253,39 +252,12 @@ func runShare(args []string) error {
 }
 
 func runSave(args []string) error {
-	// 链接里带 #<key>，flag 包会把 "#" 之后当注释；
-	// 约定「目标放在最前面，选项放后面」，这样即使不加引号也不会截断。
-	var target string
-	var rest []string
-	for i, arg := range args {
-		if arg == "--" {
-			if i+1 < len(args) && target == "" {
-				target = args[i+1]
-			}
-			break
-		}
-		if strings.HasPrefix(arg, "-") {
-			rest = append(rest, arg)
-			continue
-		}
-		if target == "" {
-			target = arg
-			continue
-		}
-		rest = append(rest, arg)
-	}
-
 	fs := flag.NewFlagSet("save", flag.ContinueOnError)
 	out := fs.String("out", ".", "保存目录，默认当前目录；\"-\" 写到标准输出")
 	password := fs.String("password", "", "口令模式的文件用这个口令解密")
-	if err := fs.Parse(rest); err != nil {
+	target, err := parseTargetAndFlags(fs, args)
+	if err != nil {
 		return err
-	}
-	if target == "" && fs.NArg() == 1 {
-		target = fs.Arg(0)
-	}
-	if target == "" {
-		return errors.New("用法：filedrop save <链接 | ID[#密钥]> [-out DIR]")
 	}
 
 	c, _, err := client()
@@ -293,7 +265,6 @@ func runSave(args []string) error {
 		return err
 	}
 	pass := *password
-
 	askPassword := func() (string, error) {
 		if pass != "" {
 			return pass, nil
