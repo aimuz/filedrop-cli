@@ -26,7 +26,7 @@ const usage = `filedrop — 端到端加密的文件传递
   filedrop logout                      退出登录
   filedrop share <文件>...             上传并输出加密链接（默认 24 小时、不限次数）
   filedrop save <链接 | ID[#密钥]>     下载并解密到当前目录
-  filedrop list                        列出账号下的文件（只有 ID 与大小）
+  filedrop list                        列出账号下的文件（只有 ID、大小与过期时间）
   filedrop rm <ID>...                  删除账号下的文件，立即释放容量
   filedrop quota                       查看账号容量
   filedrop version                     打印版本

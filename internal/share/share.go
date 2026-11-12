@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/aimuz/filedrop-cli/internal/api"
@@ -123,9 +125,32 @@ func uploadError(err error) error {
 		return err
 	}
 	if apiErr.Code == "limit_exceeded" {
+		// 服务端会给出「已用 x of y bytes」；本地化成人能读的提示。
+		if used, quota, ok := parseUsage(apiErr.Message); ok {
+			return fmt.Errorf(
+				"账号容量不足：已用 %s / %s。先运行 filedrop rm <ID> 删除旧文件，或等它们过期",
+				term.Bytes(used), term.Bytes(quota),
+			)
+		}
 		return fmt.Errorf("%s（运行 filedrop quota 看容量，或用 filedrop rm 删除旧文件）", apiErr.Message)
 	}
 	return err
+}
+
+var usagePattern = regexp.MustCompile(`account storage full: (\d+) of (\d+) bytes used`)
+
+// parseUsage 解析服务端配额错误里的「已用/上限」字节数。
+func parseUsage(message string) (used, quota int64, ok bool) {
+	match := usagePattern.FindStringSubmatch(message)
+	if match == nil {
+		return 0, 0, false
+	}
+	used, err1 := strconv.ParseInt(match[1], 10, 64)
+	quota, err2 := strconv.ParseInt(match[2], 10, 64)
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return used, quota, true
 }
 
 func hashFile(path string) (string, error) {
