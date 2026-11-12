@@ -1,5 +1,5 @@
 # 互通测试向量由服务器仓库生成（8 MiB 密文），不进版本库
-testdata/vectors.json
+**/testdata/vectors.json
 
 # 构建产物
 /filedrop
