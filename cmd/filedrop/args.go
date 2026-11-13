@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/spf13/pflag"
 )
 
@@ -26,10 +27,11 @@ type shareFlags struct {
 }
 
 func bindShareFlags(fs *pflag.FlagSet, f *shareFlags) {
-	fs.BoolVar(&f.password, "password", false, "用口令保护链接")
-	fs.IntVar(&f.maxDownloads, "max-downloads", 0, "限制下载次数（0 表示不限）")
-	fs.BoolVar(&f.copyLink, "copy", false, "上传成功后把链接复制到剪贴板")
-	fs.BoolVar(&f.clipboard, "clipboard", false, "分享剪贴板里的文本")
+	t := i18n.C().CLI
+	fs.BoolVar(&f.password, "password", false, t.FlagPassword)
+	fs.IntVar(&f.maxDownloads, "max-downloads", 0, t.FlagMaxDownloads)
+	fs.BoolVar(&f.copyLink, "copy", false, t.FlagCopy)
+	fs.BoolVar(&f.clipboard, "clipboard", false, t.FlagClipboard)
 }
 
 // saveFlags 是 `filedrop save` 的选项。
@@ -43,9 +45,10 @@ type saveFlags struct {
 }
 
 func bindSaveFlags(fs *pflag.FlagSet, f *saveFlags) {
-	fs.StringVar(&f.out, "out", ".", "保存目录，默认当前目录；\"-\" 写到标准输出")
-	fs.StringVar(&f.password, "password", "", "口令模式的文件用这个口令解密")
-	fs.IntVar(&f.concurrency, "concurrency", 0, "同时下载的分块数（0 表示自动，默认 4）")
+	t := i18n.C().CLI
+	fs.StringVar(&f.out, "out", ".", t.FlagOut)
+	fs.StringVar(&f.password, "password", "", t.FlagSavePassword)
+	fs.IntVar(&f.concurrency, "concurrency", 0, t.FlagConcurrency)
 }
 
 // loginFlags 是 `filedrop login` 的选项。
@@ -54,5 +57,5 @@ type loginFlags struct {
 }
 
 func bindLoginFlags(fs *pflag.FlagSet, f *loginFlags) {
-	fs.BoolVar(&f.noBrowser, "no-browser", false, "只打印链接，不自动打开浏览器")
+	fs.BoolVar(&f.noBrowser, "no-browser", false, i18n.C().CLI.FlagNoBrowser)
 }

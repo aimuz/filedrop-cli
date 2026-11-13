@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 )
 
 // Error 是服务端返回的结构化错误（{error:{code,message}}）。
@@ -108,7 +110,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("连接 %s 失败: %w", c.BaseURL, err)
+		return fmt.Errorf(i18n.C().API.ConnectFailed, c.BaseURL, err)
 	}
 	defer resp.Body.Close()
 
@@ -120,7 +122,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		return nil
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("解析响应失败: %w", err)
+		return fmt.Errorf(i18n.C().API.DecodeFailed, err)
 	}
 	return nil
 }

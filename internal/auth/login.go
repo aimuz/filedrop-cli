@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aimuz/filedrop-cli/internal/api"
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -24,8 +25,8 @@ type LoginOptions struct {
 
 // ErrDenied 表示用户在网页上拒绝或票据过期。
 var (
-	ErrDenied  = errors.New("登录请求被拒绝")
-	ErrExpired = errors.New("登录请求已过期，请重新执行 filedrop login")
+	ErrDenied  = i18n.NewError(func() string { return i18n.C().Auth.Denied })
+	ErrExpired = i18n.NewError(func() string { return i18n.C().Auth.Expired })
 )
 
 // Login 走完设备码流程，返回长期令牌与账号展示名。
@@ -44,15 +45,15 @@ func Login(ctx context.Context, client *api.Client, opts LoginOptions) (token, a
 		return "", "", err
 	}
 
-	fmt.Fprintln(out, "在浏览器里打开下面的链接完成登录：")
+	fmt.Fprintln(out, i18n.C().Auth.OpenLink)
 	fmt.Fprintln(out, "  "+term.Bold(start.AuthURL))
 	minutes := max(1, int(time.Until(time.UnixMilli(start.ExpiresAt)).Minutes()))
-	fmt.Fprintln(out, term.Dim(fmt.Sprintf("设备码 %s，%d 分钟内有效。", start.Code, minutes)))
+	fmt.Fprintln(out, term.Dim(fmt.Sprintf(i18n.C().Auth.DeviceCode, start.Code, minutes)))
 	if !opts.NoBrowser {
 		if err := term.OpenBrowser(start.AuthURL); err != nil {
-			fmt.Fprintln(out, term.Dim("无法自动打开浏览器，请手动复制上面的链接。"))
+			fmt.Fprintln(out, term.Dim(i18n.C().Auth.BrowserFallback))
 		} else {
-			fmt.Fprintln(out, term.Dim("已尝试打开浏览器，等待授权…"))
+			fmt.Fprintln(out, term.Dim(i18n.C().Auth.BrowserOpened))
 		}
 	}
 
@@ -84,7 +85,7 @@ func Login(ctx context.Context, client *api.Client, opts LoginOptions) (token, a
 		switch poll.Status {
 		case "authorized":
 			if poll.Token == "" {
-				return "", "", errors.New("服务端没有返回登录令牌")
+				return "", "", errors.New(i18n.C().Auth.NoToken)
 			}
 			session, err := client.WithToken(poll.Token).Session(ctx)
 			if err != nil {

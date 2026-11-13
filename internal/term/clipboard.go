@@ -6,10 +6,12 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 )
 
 // ErrClipboardEmpty 表示剪贴板里没有文本。
-var ErrClipboardEmpty = errors.New("剪贴板是空的（只支持文本内容）")
+var ErrClipboardEmpty = i18n.NewError(func() string { return i18n.C().Term.ClipboardEmpty })
 
 // ReadClipboard 读取系统剪贴板里的文本。
 //
@@ -48,5 +50,5 @@ func ReadClipboard() (string, error) {
 		}
 		return text, nil
 	}
-	return "", errors.New("找不到可用的剪贴板工具")
+	return "", errors.New(i18n.C().Term.NoClipboardTool)
 }

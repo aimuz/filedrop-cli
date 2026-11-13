@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/share"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
@@ -24,7 +25,7 @@ func runShare(args []string) error {
 	files := fs.Args()
 	// 先校验选项值，再报缺少输入：`--max-downloads -1` 应该提示次数不对，而不是甩用法。
 	if opts.maxDownloads < 0 {
-		return usagef("--max-downloads 不能是负数")
+		return usage(i18n.C().CLI.MaxDownloadsNegative)
 	}
 	if len(files) == 0 && !opts.clipboard {
 		return usageFor("share")
@@ -34,7 +35,7 @@ func runShare(args []string) error {
 		return err
 	}
 	if cfg.Token == "" {
-		return errors.New("分享需要登录，先运行 filedrop login（未登录也可以直接在网页上上传）")
+		return errors.New(i18n.C().CLI.ShareNeedsLogin)
 	}
 
 	pass, err := askPassword(opts.password)
@@ -65,13 +66,13 @@ func runShare(args []string) error {
 	}
 
 	if opts.password {
-		fmt.Fprintln(os.Stderr, term.Dim("口令不要和链接放在同一条消息里。"))
+		fmt.Fprintln(os.Stderr, term.Dim(i18n.C().CLI.PasswordHint))
 	} else {
-		fmt.Fprintln(os.Stderr, term.Dim("链接本身就含密钥，直接发给对方即可。"))
+		fmt.Fprintln(os.Stderr, term.Dim(i18n.C().CLI.KeyHint))
 	}
 	if opts.copyLink {
 		if err := term.CopyToClipboard(strings.Join(links, "\n")); err != nil {
-			fmt.Fprintln(os.Stderr, term.Dim("复制失败："+err.Error()))
+			fmt.Fprintln(os.Stderr, term.Dim(fmt.Sprintf(i18n.C().CLI.CopyFailed, err)))
 		}
 	}
 	return nil
@@ -82,19 +83,20 @@ func askPassword(enabled bool) (string, error) {
 	if !enabled {
 		return "", nil
 	}
-	pass, err := term.ReadPassword("设置口令（至少 8 位）：")
+	t := i18n.C().CLI
+	pass, err := term.ReadPassword(t.SetPasswordPrompt)
 	if err != nil {
 		return "", err
 	}
-	again, err := term.ReadPassword("再输入一次：")
+	again, err := term.ReadPassword(t.RepeatPasswordPrompt)
 	if err != nil {
 		return "", err
 	}
 	if pass != again {
-		return "", errors.New("两次输入的口令不一致")
+		return "", errors.New(t.PasswordMismatch)
 	}
 	if len([]rune(pass)) < 8 {
-		return "", errors.New("口令至少 8 位")
+		return "", errors.New(t.PasswordTooShort)
 	}
 	return pass, nil
 }
@@ -106,7 +108,7 @@ func prepareContents(base string, files []string, clipboard bool) ([]*share.Cont
 	if clipboard {
 		text, err := term.ReadClipboard()
 		if err != nil {
-			return nil, fmt.Errorf("读取剪贴板失败: %w", err)
+			return nil, fmt.Errorf(i18n.C().CLI.ClipboardReadFailed, err)
 		}
 		content, err := share.FromText(text, base)
 		if err != nil {

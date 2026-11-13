@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/aimuz/filedrop-cli/internal/filex"
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -21,7 +22,7 @@ func runSave(args []string) error {
 	}
 	// 先校验选项再联网：参数写错了不该等一轮网络往返才报出来。
 	if opts.concurrency < 0 {
-		return usagef("--concurrency 不能是负数")
+		return usage(i18n.C().CLI.ConcurrencyNegative)
 	}
 
 	c, _, err := client()
@@ -34,7 +35,7 @@ func runSave(args []string) error {
 		if pass != "" {
 			return pass, nil
 		}
-		value, err := term.ReadPassword("口令：")
+		value, err := term.ReadPassword(i18n.C().CLI.SavePasswordPrompt)
 		if err != nil {
 			return "", err
 		}
@@ -54,6 +55,6 @@ func runSave(args []string) error {
 	if opts.out == "-" {
 		return nil
 	}
-	fmt.Fprintln(os.Stderr, term.Green("已保存：")+result.Path)
+	fmt.Fprintln(os.Stderr, term.Green(fmt.Sprintf(i18n.C().CLI.Saved, result.Path)))
 	return nil
 }

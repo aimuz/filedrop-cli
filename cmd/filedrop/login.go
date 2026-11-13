@@ -7,6 +7,7 @@ import (
 	"github.com/aimuz/filedrop-cli/internal/api"
 	"github.com/aimuz/filedrop-cli/internal/auth"
 	"github.com/aimuz/filedrop-cli/internal/config"
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -34,7 +35,7 @@ func runLogin(args []string) error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	fmt.Println(term.Green("已登录。"))
+	fmt.Println(term.Green(i18n.C().CLI.LoggedIn))
 	return nil
 }
 
@@ -47,7 +48,7 @@ func runLogout(args []string) error {
 		return err
 	}
 	if cfg.Token == "" {
-		fmt.Println("当前没有登录。")
+		fmt.Println(i18n.C().CLI.NotLoggedIn)
 		return nil
 	}
 	// 服务端撤销失败也照样清本地，避免留下一个用不了又删不掉的令牌。
@@ -57,7 +58,7 @@ func runLogout(args []string) error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	fmt.Println("已退出登录。")
+	fmt.Println(i18n.C().CLI.LoggedOut)
 	return nil
 }
 
@@ -74,9 +75,9 @@ func runWhoami(args []string) error {
 		return err
 	}
 	if info.DisplayName != "" {
-		fmt.Printf("已登录：%s\n", info.DisplayName)
+		fmt.Println(fmt.Sprintf(i18n.C().CLI.CurrentAccount, info.DisplayName))
 	} else {
-		fmt.Printf("已登录：%s\n", info.UserID)
+		fmt.Println(fmt.Sprintf(i18n.C().CLI.CurrentAccount, info.UserID))
 	}
 	return nil
 }

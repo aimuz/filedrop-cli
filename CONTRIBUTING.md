@@ -39,7 +39,21 @@ pnpm --filter @filedrop/api test
 | `internal/httpx` | 访问对象存储的 HTTP 客户端（分片并发用） |
 | `internal/auth` | 设备码登录 |
 | `internal/config` | 本地配置 |
+| `internal/i18n` | 界面文案与语言检测（`zh` / `en`） |
 | `internal/term` | 终端输出：颜色、进度、口令输入、剪贴板 |
+
+## 文案与翻译
+
+界面文案集中在 `internal/i18n/catalog.go`（字段定义）、`zh.go` 与 `en.go`（两种语言）。
+新增或修改文案时：
+
+1. 在对应的 `*Text` 结构里加字段；
+2. 在 `zh.go` 和 `en.go` 里都填上；
+3. 跑 `go test ./internal/i18n`——它会检查空字段，并确保英文文案里没有残留中文。
+
+语言按 gettext 的约定只读环境变量：`FILEDROP_LANG` → `LANGUAGE` → `LC_ALL` →
+`LC_MESSAGES` → `LANG`。`LANGUAGE` 在 C/POSIX locale 下被忽略；未支持的语言回退英文，
+完全没有 locale 时回退中文。没有 `--lang` 开关。
 
 ## 基准测试
 

@@ -12,6 +12,7 @@ import (
 	"github.com/aimuz/filedrop-cli/internal/api"
 	"github.com/aimuz/filedrop-cli/internal/crypto"
 	"github.com/aimuz/filedrop-cli/internal/httpx"
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -83,7 +84,7 @@ type chunk struct {
 //   - 标准输出：管道只能顺序写，按块号排队输出。
 func (t *task) Download(ctx context.Context, concurrency int) (err error) {
 	if t.progress != nil {
-		t.progress.Start("下载", t.meta.Size)
+		t.progress.Start(i18n.C().Filex.ProgressLabel, t.meta.Size)
 		defer func() {
 			if err != nil {
 				t.progress.Abort()
@@ -107,7 +108,7 @@ func (t *task) Download(ctx context.Context, concurrency int) (err error) {
 		return err
 	}
 	if written != t.meta.Size {
-		return errors.New("解密后的大小与元数据不一致，文件可能不完整")
+		return errors.New(i18n.C().Filex.SizeMismatch)
 	}
 	return nil
 }
@@ -275,7 +276,7 @@ func (t *task) pipeline(ctx context.Context, workers int, cancel context.CancelF
 
 // chunkError 把单块的下载错误补上块号；块级失败和解密失败要能区分开。
 func (t *task) chunkError(item chunk) error {
-	return fmt.Errorf("第 %d/%d 块下载失败: %w", item.index+1, t.meta.ChunkCount, item.err)
+	return fmt.Errorf(i18n.C().Filex.ChunkDownloadFailed, item.index+1, t.meta.ChunkCount, item.err)
 }
 
 // openChunk 解密一块、裁掉最后一块的填充，并归还密文缓冲。
@@ -287,7 +288,7 @@ func (t *task) openChunk(plain *[]byte, item chunk) ([]byte, error) {
 	// 密文缓冲立刻归还：接下来的写入用的是 opened，与 sealed 无关。
 	item.recycle()
 	if err != nil {
-		return nil, fmt.Errorf("第 %d/%d 块校验失败: %w", item.index+1, t.meta.ChunkCount, err)
+		return nil, fmt.Errorf(i18n.C().Filex.ChunkVerifyFailed, item.index+1, t.meta.ChunkCount, err)
 	}
 	*plain = opened
 	if last {
@@ -321,7 +322,7 @@ func (s *downloadSource) current(ctx context.Context) (string, error) {
 		return s.url, nil
 	}
 	if s.renewed {
-		return "", errors.New("文件已过期、已被删除，或已达到下载次数上限")
+		return "", errors.New(i18n.C().Filex.DownloadUnavailable)
 	}
 	s.renewed = true
 	url, err := s.renew(ctx)
@@ -410,7 +411,7 @@ func (e *fatalError) Unwrap() error { return e.err }
 // httpStatusError 是对象存储返回的非 2xx 状态。
 type httpStatusError struct{ code int }
 
-func (e *httpStatusError) Error() string { return fmt.Sprintf("下载失败: HTTP %d", e.code) }
+func (e *httpStatusError) Error() string { return fmt.Sprintf(i18n.C().Filex.HTTPStatus, e.code) }
 
 // fetchRange 读 [start, end] 这段密文到 dst（容量不足时扩容）。
 func fetchRange(ctx context.Context, dst []byte, rawURL string, start, end int64) ([]byte, error) {
@@ -422,14 +423,14 @@ func fetchRange(ctx context.Context, dst []byte, rawURL string, start, end int64
 	req.Header.Set("range", fmt.Sprintf("bytes=%d-%d", start, end))
 	resp, err := httpx.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("下载失败: %w", err)
+		return nil, fmt.Errorf(i18n.C().Filex.TransferFailed, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return nil, &httpStatusError{code: resp.StatusCode}
 	}
 	if resp.StatusCode == http.StatusOK && start != 0 {
-		return nil, &fatalError{errors.New("对象存储忽略了 Range 请求，无法分块下载")}
+		return nil, &fatalError{errors.New(i18n.C().Filex.RangeIgnored)}
 	}
 
 	want := end - start + 1
@@ -438,7 +439,7 @@ func fetchRange(ctx context.Context, dst []byte, rawURL string, start, end int64
 	}
 	dst = dst[:want]
 	if _, err := io.ReadFull(resp.Body, dst); err != nil {
-		return nil, fmt.Errorf("下载失败: %w", err)
+		return nil, fmt.Errorf(i18n.C().Filex.TransferFailed, err)
 	}
 	return dst, nil
 }

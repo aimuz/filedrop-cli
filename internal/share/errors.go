@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/aimuz/filedrop-cli/internal/api"
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -20,11 +21,11 @@ func uploadError(err error) error {
 		// 服务端会给出「已用 x of y bytes」；本地化成人能读的提示。
 		if used, quota, ok := parseUsage(apiErr.Message); ok {
 			return fmt.Errorf(
-				"账号容量不足：已用 %s / %s。先运行 filedrop rm <ID> 删除旧文件，或等它们过期",
+				i18n.C().Share.QuotaExceeded,
 				term.Bytes(used), term.Bytes(quota),
 			)
 		}
-		return fmt.Errorf("%s（运行 filedrop quota 看容量，或用 filedrop rm 删除旧文件）", apiErr.Message)
+		return fmt.Errorf(i18n.C().Share.QuotaHint, apiErr.Message)
 	}
 	return err
 }

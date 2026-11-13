@@ -7,6 +7,7 @@ import (
 
 	"github.com/aimuz/filedrop-cli/internal/api"
 	"github.com/aimuz/filedrop-cli/internal/crypto"
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -81,7 +82,7 @@ func openFile(ctx context.Context, client *api.Client, target Target, password f
 	info, err := client.FileInfo(ctx, target.FileID)
 	if err != nil {
 		if apiErr, ok := errors.AsType[*api.Error](err); ok && apiErr.Status == 404 {
-			return nil, nil, errors.New("文件不存在、已过期或已被删除")
+			return nil, nil, errors.New(i18n.C().Filex.NotFound)
 		}
 		return nil, nil, err
 	}
@@ -92,7 +93,7 @@ func openFile(ctx context.Context, client *api.Client, target Target, password f
 		return nil, nil, ErrMissingKey
 	}
 	if password == nil {
-		return nil, nil, errors.New("这个文件需要口令")
+		return nil, nil, errors.New(i18n.C().Filex.PasswordRequired)
 	}
 	pass, err := password()
 	if err != nil {
@@ -108,7 +109,7 @@ func openFile(ctx context.Context, client *api.Client, target Target, password f
 // downloadError 把「下载次数用完」「文件已不存在」讲清楚。
 func downloadError(err error) error {
 	if apiErr, ok := errors.AsType[*api.Error](err); ok && apiErr.Status == 404 {
-		return errors.New("文件已过期、已被删除，或已达到下载次数上限")
+		return errors.New(i18n.C().Filex.DownloadUnavailable)
 	}
 	return err
 }

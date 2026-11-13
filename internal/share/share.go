@@ -17,6 +17,7 @@ import (
 	"github.com/aimuz/filedrop-cli/internal/config"
 	"github.com/aimuz/filedrop-cli/internal/crypto"
 	"github.com/aimuz/filedrop-cli/internal/httpx"
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -46,10 +47,10 @@ func FromPath(path, base string) (*Content, error) {
 		return nil, err
 	}
 	if info.IsDir() {
-		return nil, errors.New("不能分享目录，请指定文件")
+		return nil, errors.New(i18n.C().Share.DirectoryNotFile)
 	}
 	if info.Size() > MaxFileSize {
-		return nil, fmt.Errorf("文件超过单文件上限 %s", term.Bytes(MaxFileSize))
+		return nil, fmt.Errorf(i18n.C().Share.FileTooLarge, term.Bytes(MaxFileSize))
 	}
 	return &Content{
 		Name: filepath.Base(path),
@@ -76,7 +77,7 @@ func textName(text string) string {
 func FromText(text, base string) (*Content, error) {
 	size := int64(len(text))
 	if size > MaxFileSize {
-		return nil, fmt.Errorf("内容超过单文件上限 %s", term.Bytes(MaxFileSize))
+		return nil, fmt.Errorf(i18n.C().Share.ContentTooLarge, term.Bytes(MaxFileSize))
 	}
 	return &Content{
 		Name: textName(text),
@@ -192,7 +193,7 @@ func uploadParts(
 	progress *term.Progress,
 ) (parts []api.CompletedPart, err error) {
 	if progress != nil {
-		progress.Start("上传", content.size)
+		progress.Start(i18n.C().Share.ProgressLabel, content.size)
 		defer func() {
 			if err != nil {
 				progress.Abort()
@@ -243,10 +244,10 @@ func uploadParts(
 
 			n, err := io.ReadFull(r, plain[:contentLength])
 			if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-				return nil, fmt.Errorf("读取 %s 失败: %w", content.Name, err)
+				return nil, fmt.Errorf(i18n.C().Share.ReadFailed, content.Name, err)
 			}
 			if n != contentLength {
-				return nil, fmt.Errorf("读取 %s 失败：文件在传输期间被改动", content.Name)
+				return nil, fmt.Errorf(i18n.C().Share.FileChanged, content.Name)
 			}
 			if last && length > contentLength {
 				// 最后一块用随机字节补到 64 KiB 的整数倍（与网页版一致）。
@@ -308,7 +309,7 @@ func signParts(ctx context.Context, client *api.Client, fileID string, urls map[
 		return nil
 	}
 	if client == nil {
-		return errors.New("服务端没有返回分片地址")
+		return errors.New(i18n.C().Share.MissingPartURL)
 	}
 	signed, err := client.Parts(ctx, fileID, missing)
 	if err != nil {
@@ -319,7 +320,7 @@ func signParts(ctx context.Context, client *api.Client, fileID string, urls map[
 	}
 	for _, partNumber := range missing {
 		if urls[partNumber] == "" {
-			return errors.New("服务端没有返回分片地址")
+			return errors.New(i18n.C().Share.MissingPartURL)
 		}
 	}
 	return nil
@@ -333,16 +334,16 @@ func putPart(ctx context.Context, url string, body []byte) (string, error) {
 	req.ContentLength = int64(len(body))
 	resp, err := httpx.Client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("上传分片失败: %w", err)
+		return "", fmt.Errorf(i18n.C().Share.UploadPartFailed, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("上传分片失败: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		return "", fmt.Errorf(i18n.C().Share.UploadPartStatus, resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 	etag := strings.Trim(resp.Header.Get("etag"), `"`)
 	if etag == "" {
-		return "", errors.New("对象存储没有返回 ETag（检查桶的 CORS 是否暴露 ETag）")
+		return "", errors.New(i18n.C().Share.MissingETag)
 	}
 	return etag, nil
 }

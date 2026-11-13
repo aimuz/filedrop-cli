@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 )
 
 var colorEnabled = detectColor()
@@ -58,7 +60,7 @@ func isTTY() bool {
 var stdin = bufio.NewReader(os.Stdin)
 
 // ErrEmptyInput 表示标准输入已经结束（EOF），没有可读的口令。
-var ErrEmptyInput = errors.New("没有读到输入")
+var ErrEmptyInput = i18n.NewError(func() string { return i18n.C().Term.EmptyInput })
 
 // ReadPassword 不带回显地读取一行（终端上）；非终端时退回普通读取，便于管道与测试。
 // 按行读取会容忍 CRLF，并允许文件末尾没有换行。
@@ -217,20 +219,21 @@ func Bytes(n int64) string {
 
 // Expires 把过期时间格式化成「还有多久」。
 func Expires(epochMS int64) string {
+	t := i18n.C().Term
 	left := time.Until(time.UnixMilli(epochMS))
 	if left <= 0 {
-		return "已过期"
+		return t.Expired
 	}
 	left = left.Round(time.Minute)
 	switch {
 	case left < time.Minute:
-		return "不到 1 分钟"
+		return t.LessThanMinute
 	case left < time.Hour:
-		return fmt.Sprintf("还有 %d 分钟", int(left.Minutes()))
+		return fmt.Sprintf(t.MinutesLeft, int(left.Minutes()))
 	case left < 48*time.Hour:
-		return fmt.Sprintf("还有 %d 小时", int(left.Hours()))
+		return fmt.Sprintf(t.HoursLeft, int(left.Hours()))
 	default:
-		return fmt.Sprintf("还有 %d 天", int(left.Hours()/24))
+		return fmt.Sprintf(t.DaysLeft, int(left.Hours()/24))
 	}
 }
 
@@ -272,5 +275,5 @@ func CopyToClipboard(text string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("找不到可用的剪贴板工具")
+	return errors.New(i18n.C().Term.NoClipboardTool)
 }

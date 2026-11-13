@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 )
 
 // sink 是唯一的写出口：文件或标准输出。失败时丢弃已写内容。
@@ -37,7 +39,7 @@ func (s *sink) write(p []byte) error {
 // 这样某个块卡在网络上时，后面的块照样能落盘。标准输出不支持随机写。
 func (s *sink) writeAt(p []byte, offset int64) error {
 	if s.stdout {
-		return errors.New("标准输出不支持并发写入")
+		return errors.New(i18n.C().Filex.StdoutConcurrent)
 	}
 	_, err := s.file.WriteAt(p, offset)
 	return err

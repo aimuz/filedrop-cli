@@ -21,13 +21,13 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -58,12 +58,18 @@ type FormatError struct{ Reason string }
 
 func (e *FormatError) Error() string { return e.Reason }
 
-func formatError(format string, args ...any) error {
+// formatError 用于不带占位符的文案；带参数的走 formatErrorf。
+func formatError(message string) error {
+	return &FormatError{Reason: message}
+}
+
+func formatErrorf(format string, args ...any) error {
 	return &FormatError{Reason: fmt.Sprintf(format, args...)}
 }
 
 // ErrWrongPassword 是口令解不开主密钥时的错误。
-var ErrWrongPassword = errors.New("口令不正确")
+// 文案延迟取当前语言，但错误值本身保持不变，便于比较与 errors.Is。
+var ErrWrongPassword = i18n.NewError(func() string { return i18n.C().Crypto.WrongPassword })
 
 // Base64URL 编码，不带 = 填充。
 func Base64URL(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
@@ -93,11 +99,11 @@ func RandomBytes(n int) ([]byte, error) {
 // FileIDBytes 校验并解码 22 字符的 fileId。
 func FileIDBytes(fileID string) ([]byte, error) {
 	if len(fileID) != 22 {
-		return nil, formatError("文件 ID 格式不对")
+		return nil, formatError(i18n.C().Crypto.BadFileID)
 	}
 	raw, err := FromBase64URL(fileID)
 	if err != nil || len(raw) != FileIDLength {
-		return nil, formatError("文件 ID 格式不对")
+		return nil, formatError(i18n.C().Crypto.BadFileID)
 	}
 	return raw, nil
 }
@@ -141,7 +147,7 @@ type Keys struct {
 // DeriveKeys 用主密钥 K 与 fileId 派生文件密钥与元数据密钥。
 func DeriveKeys(masterKey []byte, fileID string) (*Keys, error) {
 	if len(masterKey) != MasterKeyLength {
-		return nil, formatError("主密钥必须是 32 字节")
+		return nil, formatError(i18n.C().Crypto.MasterKeyLength)
 	}
 	salt, err := FileIDBytes(fileID)
 	if err != nil {
@@ -219,10 +225,10 @@ func (k *Keys) SealChunk(fileID string, index int, last bool, plain []byte) ([]b
 // dst 可以反复复用：返回的是 dst 的前 len(plain)+16 字节。
 func (k *Keys) SealChunkTo(dst []byte, fileID string, index int, last bool, plain []byte) ([]byte, error) {
 	if len(plain) > ChunkSize {
-		return nil, formatError("第 %d 块超过 8 MiB", index)
+		return nil, formatErrorf(i18n.C().Crypto.ChunkTooLarge, index)
 	}
 	if !last && len(plain) != ChunkSize {
-		return nil, formatError("非最后一块第 %d 块必须是 8 MiB", index)
+		return nil, formatErrorf(i18n.C().Crypto.ChunkNotFull, index)
 	}
 	nonce := ChunkNonce(index)
 	aad := chunkAAD(fileID, index, last)
@@ -237,13 +243,13 @@ func (k *Keys) OpenChunk(fileID string, index int, last bool, sealed []byte) ([]
 // OpenChunkTo 与 OpenChunk 相同，但写入 dst 以复用缓冲区。
 func (k *Keys) OpenChunkTo(dst []byte, fileID string, index int, last bool, sealed []byte) ([]byte, error) {
 	if len(sealed) < TagLength {
-		return nil, formatError("第 %d 块密文短于认证标签", index)
+		return nil, formatErrorf(i18n.C().Crypto.ChunkTooShort, index)
 	}
 	nonce := ChunkNonce(index)
 	aad := chunkAAD(fileID, index, last)
 	plain, err := k.File.Open(dst[:0], nonce[:], sealed, aad[:])
 	if err != nil {
-		return nil, formatError("第 %d 块校验失败，文件可能被篡改或链接不完整", index)
+		return nil, formatErrorf(i18n.C().Crypto.ChunkAuthFailed, index)
 	}
 	return plain, nil
 }
@@ -281,7 +287,7 @@ func (k *Keys) SealMeta(fileID string, meta Meta) (string, error) {
 	}
 	payload := make([]byte, metaPlainSize)
 	if len(raw) > metaPlainSize {
-		return "", formatError("元数据过长")
+		return "", formatError(i18n.C().Crypto.MetaTooLong)
 	}
 	copy(payload, raw)
 	// 尾部补空格：仍是合法 JSON 空白，但长度固定。
@@ -301,17 +307,17 @@ func (k *Keys) OpenMeta(fileID, sealedB64 string) (Meta, error) {
 	var meta Meta
 	raw, err := FromBase64URL(sealedB64)
 	if err != nil {
-		return meta, formatError("元数据不是合法的 base64url")
+		return meta, formatError(i18n.C().Crypto.MetaBadBase64)
 	}
 	if len(raw) <= nonceLength {
-		return meta, formatError("元数据密文过短")
+		return meta, formatError(i18n.C().Crypto.MetaTooShort)
 	}
 	plain, err := k.Meta.Open(nil, raw[:nonceLength], raw[nonceLength:], metaAAD(fileID))
 	if err != nil {
-		return meta, formatError("元数据解密失败：密钥不对或文件被篡改")
+		return meta, formatError(i18n.C().Crypto.MetaAuthFailed)
 	}
 	if err := json.Unmarshal(plain, &meta); err != nil {
-		return meta, formatError("元数据不是合法的 JSON")
+		return meta, formatError(i18n.C().Crypto.MetaBadJSON)
 	}
 	if err := ValidateMeta(meta); err != nil {
 		return meta, err
@@ -322,22 +328,22 @@ func (k *Keys) OpenMeta(fileID, sealedB64 string) (Meta, error) {
 // ValidateMeta 校验元数据字段范围（与 validateFileMeta 一致）。
 func ValidateMeta(meta Meta) error {
 	if meta.Version != 1 {
-		return formatError("不支持的元数据版本")
+		return formatError(i18n.C().Crypto.MetaVersion)
 	}
 	if meta.Name == "" || utf8.RuneCountInString(meta.Name) > 255 {
-		return formatError("文件名不合法")
+		return formatError(i18n.C().Crypto.BadName)
 	}
 	if meta.Size < 0 {
-		return formatError("文件大小不合法")
+		return formatError(i18n.C().Crypto.BadSize)
 	}
 	if len(meta.Type) > 255 {
-		return formatError("文件类型不合法")
+		return formatError(i18n.C().Crypto.BadType)
 	}
 	if meta.ChunkSize != ChunkSize {
-		return formatError("块大小不合法")
+		return formatError(i18n.C().Crypto.BadChunkSize)
 	}
 	if meta.ChunkCount < 1 {
-		return formatError("块数不合法")
+		return formatError(i18n.C().Crypto.BadChunkCount)
 	}
 	return nil
 }
@@ -355,10 +361,10 @@ func keyAAD() []byte { return []byte(protocolVersion + "/key") }
 // WrapMasterKey 用口令包裹主密钥（PBKDF2-HMAC-SHA256 600000 次，口令先做 NFKC 规范化）。
 func WrapMasterKey(masterKey []byte, password string) (*Wrap, error) {
 	if len(masterKey) != MasterKeyLength {
-		return nil, formatError("主密钥必须是 32 字节")
+		return nil, formatError(i18n.C().Crypto.MasterKeyLength)
 	}
 	if utf8.RuneCountInString(password) < 8 {
-		return nil, formatError("口令至少 8 位")
+		return nil, formatError(i18n.C().Crypto.PasswordTooShort)
 	}
 	salt, err := RandomBytes(16)
 	if err != nil {
@@ -392,14 +398,14 @@ func UnwrapMasterKey(w Wrap, password string) ([]byte, error) {
 	}
 	salt, err := FromBase64URL(w.Salt)
 	if err != nil {
-		return nil, formatError("口令外壳的盐不合法")
+		return nil, formatError(i18n.C().Crypto.BadWrapSalt)
 	}
 	raw, err := FromBase64URL(w.WrappedKey)
 	if err != nil {
-		return nil, formatError("口令外壳的密文不合法")
+		return nil, formatError(i18n.C().Crypto.BadWrapCipher)
 	}
 	if len(raw) != nonceLength+MasterKeyLength+TagLength {
-		return nil, formatError("口令外壳密文长度不对")
+		return nil, formatError(i18n.C().Crypto.BadWrapLength)
 	}
 	kek, err := pbkdf2.Key(sha256.New, norm.NFKC.String(password), salt, iterations, 32)
 	if err != nil {
@@ -422,15 +428,15 @@ var kdfPattern = regexp.MustCompile(`^pbkdf2-sha256-([0-9]{3,9})k$`)
 func parseKDF(kdf string) (int, error) {
 	match := kdfPattern.FindStringSubmatch(kdf)
 	if match == nil {
-		return 0, formatError("不支持的口令派生算法 %q", kdf)
+		return 0, formatErrorf(i18n.C().Crypto.UnsupportedKDF, kdf)
 	}
 	thousands, err := strconv.Atoi(match[1])
 	if err != nil {
-		return 0, formatError("不支持的口令派生算法 %q", kdf)
+		return 0, formatErrorf(i18n.C().Crypto.UnsupportedKDF, kdf)
 	}
 	iterations := thousands * 1000
 	if iterations < PBKDF2Iterations {
-		return 0, formatError("口令派生迭代次数过低")
+		return 0, formatError(i18n.C().Crypto.WeakKDF)
 	}
 	return iterations, nil
 }

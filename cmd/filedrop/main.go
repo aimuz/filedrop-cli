@@ -10,6 +10,7 @@ import (
 
 	"github.com/aimuz/filedrop-cli/internal/api"
 	"github.com/aimuz/filedrop-cli/internal/config"
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -18,6 +19,7 @@ import (
 var ctx = context.Background()
 
 func main() {
+	i18n.Set(i18n.Detect())
 	stop := setupSignals()
 	defer stop()
 
@@ -43,7 +45,7 @@ func exitWith(err error) {
 		return
 	}
 	if errors.Is(err, context.Canceled) {
-		fmt.Fprintln(os.Stderr, term.Dim("已取消。"))
+		fmt.Fprintln(os.Stderr, term.Dim(i18n.C().CLI.Canceled))
 		os.Exit(130)
 	}
 	if usageErr, ok := errors.AsType[*usageError](err); ok {
@@ -63,7 +65,7 @@ func exitCode(err error) int {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		fmt.Print(usage)
+		fmt.Print(i18n.C().CLI.Usage)
 		return nil
 	}
 	command, rest := args[0], args[1:]
@@ -77,7 +79,7 @@ func run(args []string) error {
 
 	spec, ok := lookupCommand(command)
 	if !ok {
-		return usagef("未知命令 %q，运行 filedrop help 查看用法", command)
+		return usagef(i18n.C().CLI.UnknownCommand, command)
 	}
 	return spec.run(rest)
 }
@@ -98,7 +100,7 @@ func authedClient() (*api.Client, error) {
 		return nil, err
 	}
 	if cfg.Token == "" {
-		return nil, errors.New("尚未登录，先运行 filedrop login")
+		return nil, errors.New(i18n.C().CLI.NeedLogin)
 	}
 	return c, nil
 }

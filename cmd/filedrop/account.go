@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -19,11 +20,12 @@ func runList(args []string) error {
 	if err != nil {
 		return err
 	}
+	t := i18n.C().CLI
 	if len(files) == 0 {
-		fmt.Println("账号下没有未过期的文件。")
+		fmt.Println(t.NoFiles)
 		return nil
 	}
-	fmt.Printf("%-24s %10s  %s\n", "ID", "SIZE", "EXPIRES")
+	fmt.Printf("%-24s %10s  %s\n", t.ColID, t.ColSize, t.ColExpires)
 	for _, file := range files {
 		fmt.Printf("%-24s %10s  %s\n", file.FileID, term.Bytes(file.EncryptedSize), term.Expires(file.ExpiresAt))
 	}
@@ -51,10 +53,10 @@ func runRm(args []string) error {
 			fmt.Fprintln(os.Stderr, term.Red(id+": ")+err.Error())
 			continue
 		}
-		fmt.Printf("%s 已删除\n", id)
+		fmt.Println(fmt.Sprintf(i18n.C().CLI.Deleted, id))
 	}
 	if failed > 0 {
-		return fmt.Errorf("%d 个文件没有删掉", failed)
+		return fmt.Errorf(i18n.C().CLI.DeleteFailed, failed)
 	}
 	return nil
 }
@@ -71,6 +73,6 @@ func runQuota(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s / %s，共 %d 个文件\n", term.Bytes(usage.UsedBytes), term.Bytes(usage.QuotaBytes), usage.FileCount)
+	fmt.Println(fmt.Sprintf(i18n.C().CLI.QuotaLine, term.Bytes(usage.UsedBytes), term.Bytes(usage.QuotaBytes), usage.FileCount))
 	return nil
 }

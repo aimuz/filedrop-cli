@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 	"github.com/spf13/pflag"
 )
@@ -21,6 +22,11 @@ func usagef(format string, args ...any) error {
 	return &usageError{message: fmt.Sprintf(format, args...)}
 }
 
+// usage 返回不需要格式化的用法错误。
+func usage(message string) error {
+	return &usageError{message: message}
+}
+
 // errHelp 表示用户主动要了帮助：用法已经打印，正常退出。
 var errHelp = errors.New("help requested")
 
@@ -31,7 +37,7 @@ func parse(fs *pflag.FlagSet, args []string) error {
 			printCommandUsage(fs.Name())
 			return errHelp
 		}
-		return usagef("%v（运行 filedrop help 查看用法）", err)
+		return usagef(i18n.C().CLI.SeeHelpHint, err)
 	}
 	return nil
 }
@@ -49,59 +55,60 @@ type commandSpec struct {
 // commandTable 既用于分发，也用于打印用法——选项说明只在 bind* 里写一次。
 // 用函数而不是包级变量：每次调用都按需构造，没有初始化顺序问题。
 func commandTable() map[string]commandSpec {
+	t := i18n.C().CLI
 	return map[string]commandSpec{
 		"login": {
 			run:      runLogin,
-			synopsis: "filedrop login [--no-browser]",
-			summary:  "登录账号。会打开浏览器，在那里面选 GitHub 或 Google，确认授权后命令行就登好了。",
+			synopsis: t.SynLogin,
+			summary:  t.SumLogin,
 			bind:     func(fs *pflag.FlagSet) { bindLoginFlags(fs, &loginFlags{}) },
 		},
 		"logout": {
 			run:      runLogout,
-			synopsis: "filedrop logout",
-			summary:  "退出登录，并清掉本机保存的登录信息。已经发出去的文件不受影响。",
+			synopsis: t.SynLogout,
+			summary:  t.SumLogout,
 		},
 		"whoami": {
 			run:      runWhoami,
-			synopsis: "filedrop whoami",
-			summary:  "查看当前登录的是哪个账号。",
+			synopsis: t.SynWhoami,
+			summary:  t.SumWhoami,
 		},
 		"share": {
 			run:      runShare,
-			synopsis: "filedrop share <文件>... | --clipboard [选项]",
-			summary:  "发送文件，输出可以直接发给别人的链接。每个文件各得一个链接，默认 24 小时后自动删除。",
+			synopsis: t.SynShare,
+			summary:  t.SumShare,
 			bind:     func(fs *pflag.FlagSet) { bindShareFlags(fs, &shareFlags{}) },
 		},
 		"save": {
 			run:      runSave,
-			synopsis: "filedrop save <链接 | ID[#密钥]> [--out DIR] [--password PW]",
-			summary:  "收到链接后把文件下载下来。不会覆盖同名文件，重名时自动改成「名字 (1).扩展名」。",
+			synopsis: t.SynSave,
+			summary:  t.SumSave,
 			bind:     func(fs *pflag.FlagSet) { bindSaveFlags(fs, &saveFlags{}) },
 		},
 		"list": {
 			run:      runList,
-			synopsis: "filedrop list",
-			summary:  "列出账号里还没过期的文件。只显示 ID、大小和剩余时间——文件名是加密的，只有你自己能看到。",
+			synopsis: t.SynList,
+			summary:  t.SumList,
 		},
 		"rm": {
 			run:      runRm,
-			synopsis: "filedrop rm <ID>...",
-			summary:  "删除文件，立刻释放占用的空间。链接随即失效，已经下载走的文件不受影响。可以一次删多个。",
+			synopsis: t.SynRm,
+			summary:  t.SumRm,
 		},
 		"quota": {
 			run:      runQuota,
-			synopsis: "filedrop quota",
-			summary:  "查看已用空间和上限，以及账号里有多少个文件。",
+			synopsis: t.SynQuota,
+			summary:  t.SumQuota,
 		},
 		"help": {
 			run:      runHelpCommand,
-			synopsis: "filedrop help <命令>",
-			summary:  "查看某个命令的详细用法，例如 filedrop help save。不带命令名时打印总览。",
+			synopsis: t.SynHelp,
+			summary:  t.SumHelp,
 		},
 		"version": {
 			run:      runVersion,
-			synopsis: "filedrop version",
-			summary:  "打印当前版本号。",
+			synopsis: t.SynVersion,
+			summary:  t.SumVersion,
 		},
 	}
 }
@@ -124,19 +131,20 @@ func lookupCommand(name string) (commandSpec, bool) {
 // usageFor 用命令表里的 synopsis 生成「用法」提示，避免各处重复抄一行用法。
 func usageFor(name string) error {
 	if spec, ok := lookupCommand(name); ok {
-		return usagef("用法：%s", spec.synopsis)
+		return usagef(i18n.C().CLI.UsageLine, spec.synopsis)
 	}
-	return usagef("用法：filedrop help %s", name)
+	return usagef("%s: %s", name, i18n.C().CLI.SynHelp)
 }
 
 // printCommandUsage 打印单个命令的用法；没登记的命令退回总览。
 func printCommandUsage(name string) {
+	t := i18n.C().CLI
 	spec, ok := lookupCommand(name)
 	if !ok {
-		fmt.Print(usage)
+		fmt.Print(t.Usage)
 		return
 	}
-	fmt.Printf("用法：%s\n", spec.synopsis)
+	fmt.Printf("%s\n", fmt.Sprintf(t.UsageLine, spec.synopsis))
 	if spec.summary != "" {
 		fmt.Printf("\n%s\n", spec.summary)
 	}
@@ -155,7 +163,7 @@ func printCommandUsage(name string) {
 		lines = append(lines, "  "+term.PadRight(label, 22)+" "+f.Usage)
 	})
 	if len(lines) > 0 {
-		fmt.Printf("\n选项：\n%s\n", strings.Join(lines, "\n"))
+		fmt.Printf("\n%s\n%s\n", t.OptionsHeader, strings.Join(lines, "\n"))
 	}
 }
 
@@ -168,6 +176,7 @@ func valueLabel(name string) string {
 }
 
 // valueLabels 只列需要值时读起来更清楚的选项。
+// 这些是命令行语法的一部分，不随语言变化。
 var valueLabels = map[string]string{
 	"out":           "DIR",
 	"password":      "PW",
@@ -189,14 +198,14 @@ func singleTarget(fs *pflag.FlagSet) (string, error) {
 	case 1:
 		return fs.Arg(0), nil
 	default:
-		return "", usagef("save 只接受一个链接，多余参数：%v", fs.Args()[1:])
+		return "", usagef(i18n.C().CLI.SaveOnlyOne, fs.Args()[1:])
 	}
 }
 
 // runHelp 打印某个命令的用法。
 func runHelp(name string) error {
 	if _, ok := lookupCommand(name); !ok {
-		return usagef("没有这个命令：%q", name)
+		return usagef(i18n.C().CLI.NoSuchCommand, name)
 	}
 	printCommandUsage(name)
 	return errHelp
@@ -210,12 +219,12 @@ func runHelpCommand(args []string) error {
 	}
 	switch fs.NArg() {
 	case 0:
-		fmt.Print(usage)
+		fmt.Print(i18n.C().CLI.Usage)
 		return nil
 	case 1:
 		return runHelp(fs.Arg(0))
 	default:
-		return usagef("help 只接受一个命令名，多余参数：%v", fs.Args()[1:])
+		return usagef(i18n.C().CLI.HelpOnlyOne, fs.Args()[1:])
 	}
 }
 
@@ -230,21 +239,3 @@ func runVersion(args []string) error {
 
 // version 由构建脚本通过 -ldflags "-X main.version=..." 注入。
 var version = "dev"
-
-const usage = `filedrop — 端到端加密的文件传递
-
-用法：
-  filedrop login                       登录账号（打开网页授权）
-  filedrop whoami                      查看当前登录状态
-  filedrop logout                      退出登录
-  filedrop share <文件>...             上传并输出加密链接（默认 24 小时、不限次数）
-  filedrop share --clipboard           把剪贴板里的文本当成文件分享
-  filedrop save <链接 | ID[#密钥]>     下载并解密到当前目录
-  filedrop list                        列出账号下的文件（只有 ID、大小与过期时间）
-  filedrop rm <ID>...                  删除账号下的文件，立即释放容量
-  filedrop quota                       查看账号容量
-  filedrop version                     打印版本
-
-命令选项：
-  filedrop help <命令>                 查看某个命令的选项，例如 filedrop help save
-`

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/aimuz/filedrop-cli/internal/i18n"
 )
 
 // DefaultAPIURL 是默认 API 地址，可用环境变量 FILEDROP_API_URL 覆盖。
@@ -36,7 +38,7 @@ func Path() (string, error) {
 	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("找不到配置目录: %w", err)
+		return "", fmt.Errorf(i18n.C().Config.NoConfigDir, err)
 	}
 	return filepath.Join(dir, "filedrop", "config.json"), nil
 }
@@ -52,7 +54,7 @@ func Load() (*Config, error) {
 	switch {
 	case err == nil:
 		if err := json.Unmarshal(raw, cfg); err != nil {
-			return nil, fmt.Errorf("配置文件损坏（%s）: %w", path, err)
+			return nil, fmt.Errorf(i18n.C().Config.Corrupt, path, err)
 		}
 	case errors.Is(err, os.ErrNotExist):
 		// 首次运行。

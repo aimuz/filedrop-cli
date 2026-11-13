@@ -100,6 +100,21 @@ filedrop help save     # 查看某个命令的所有选项
 filedrop version       # 版本号
 ```
 
+### 界面语言
+
+和大多数 Unix 工具一样，命令行按 gettext 的环境变量决定界面语言，没有 `--lang` 开关：
+
+```bash
+LANG=zh_CN.UTF-8 filedrop share 报告.pdf   # 跟随系统 locale
+LC_ALL=C filedrop share 报告.pdf           # 脚本里强制英文
+FILEDROP_LANG=en filedrop help save        # 只覆盖 filedrop
+```
+
+查找顺序是 `FILEDROP_LANG` → `LANGUAGE` → `LC_ALL` → `LC_MESSAGES` → `LANG`。
+`LANGUAGE` 是冒号分隔的优先级列表，locale 为 C/POSIX 时不做翻译、直接英文。
+目前支持简体中文（`zh`）和英文（`en`），其它语言回退英文。它只影响终端提示与错误信息，
+不影响加密格式和生成的链接。
+
 ## 常见问题
 
 **链接被谁看到，谁就能下载吗？**
