@@ -106,7 +106,8 @@ wrap = { "kdf": "pbkdf2-sha256-600k", "salt": base64url(salt), "wrappedKey": wra
 
 2. 对每个分片发 `PUT <预签名地址>`，请求体是该块的密文（含 16 字节标签），
    从响应的 `ETag` 头里取出该分片的 etag（去掉引号）。地址用完后用
-   `POST /api/files/:id/parts` 补签。
+   `POST /api/files/:id/parts` 补签。分片之间没有顺序依赖，客户端可以并发上传，
+   完成时按 `partNumber` 提交即可。
 
 3. `POST /api/files/:id/complete`：
 

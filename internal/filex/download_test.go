@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,12 +22,19 @@ import (
 // buildFile 按协议加密明文，返回完整的密文与解密所需的一切。
 func buildFile(t *testing.T, plain []byte) (sealed []byte, fileID string, keys *crypto.Keys, meta crypto.Meta) {
 	t.Helper()
+	sealed, fileID, keys, meta, _ = buildFileWithMaster(t, plain)
+	return sealed, fileID, keys, meta
+}
+
+// buildFileWithMaster 与 buildFile 相同，但额外返回主密钥（测试里要拼链接）。
+func buildFileWithMaster(t *testing.T, plain []byte) (sealed []byte, fileID string, keys *crypto.Keys, meta crypto.Meta, masterKey []byte) {
+	t.Helper()
 	idBytes, err := crypto.RandomBytes(crypto.FileIDLength)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fileID = crypto.Base64URL(idBytes)
-	masterKey, err := crypto.RandomBytes(crypto.MasterKeyLength)
+	masterKey, err = crypto.RandomBytes(crypto.MasterKeyLength)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +61,7 @@ func buildFile(t *testing.T, plain []byte) (sealed []byte, fileID string, keys *
 		}
 		sealed = append(sealed, chunk...)
 	}
-	return sealed, fileID, keys, crypto.NewMeta("out.bin", size, "application/octet-stream", chunkCount)
+	return sealed, fileID, keys, crypto.NewMeta("out.bin", size, "application/octet-stream", chunkCount), masterKey
 }
 
 // flakyStore 模拟对象存储：按 Range 返回密文，前 failFirst 次请求直接断开连接。
@@ -213,6 +221,10 @@ func TestGivesUpAfterMaxAttempts(t *testing.T) {
 	err := fetch(context.Background(), nil, fileID, server.URL, sealed, meta, keys, out, 0)
 	if err == nil {
 		t.Fatal("一直失败时必须报错")
+	}
+	// 网络失败不能被报成「校验失败」——那会让人以为链接坏了。
+	if !strings.Contains(err.Error(), "下载失败") {
+		t.Fatalf("错误信息应说明是下载失败: %v", err)
 	}
 	out.discard()
 	if total := len(store.seen()); total != maxAttempts {

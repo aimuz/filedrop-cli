@@ -46,7 +46,8 @@ func Login(ctx context.Context, client *api.Client, opts LoginOptions) (token, a
 
 	fmt.Fprintln(out, "在浏览器里打开下面的链接完成登录：")
 	fmt.Fprintln(out, "  "+term.Bold(start.AuthURL))
-	fmt.Fprintln(out, term.Dim(fmt.Sprintf("设备码 %s，%d 分钟内有效。", start.Code, int(time.Until(time.UnixMilli(start.ExpiresAt)).Minutes()))))
+	minutes := max(1, int(time.Until(time.UnixMilli(start.ExpiresAt)).Minutes()))
+	fmt.Fprintln(out, term.Dim(fmt.Sprintf("设备码 %s，%d 分钟内有效。", start.Code, minutes)))
 	if !opts.NoBrowser {
 		if err := term.OpenBrowser(start.AuthURL); err != nil {
 			fmt.Fprintln(out, term.Dim("无法自动打开浏览器，请手动复制上面的链接。"))
@@ -85,7 +86,7 @@ func Login(ctx context.Context, client *api.Client, opts LoginOptions) (token, a
 			if poll.Token == "" {
 				return "", "", errors.New("服务端没有返回登录令牌")
 			}
-			session, err := api.New(client.BaseURL, poll.Token).Session(ctx)
+			session, err := client.WithToken(poll.Token).Session(ctx)
 			if err != nil {
 				return "", "", err
 			}

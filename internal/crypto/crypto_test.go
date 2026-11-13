@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -282,3 +283,22 @@ func TestOpenChunkToReusesBuffer(t *testing.T) {
 }
 
 func pointerOf(b []byte) uintptr { return reflect.ValueOf(b).Pointer() }
+
+// 链接经常被手工复制：带 = 填充、或从别处转成标准字母表，都应该还能解开。
+func TestFromBase64URLTolerant(t *testing.T) {
+	raw := []byte{0xfb, 0xff, 0xbf, 0x00, 0x10, 0x20}
+	plain := Base64URL(raw)
+	for _, input := range []string{
+		plain,
+		plain + strings.Repeat("=", 4-len(plain)%4),
+		strings.NewReplacer("-", "+", "_", "/").Replace(plain),
+	} {
+		got, err := FromBase64URL(input)
+		if err != nil {
+			t.Fatalf("解码 %q 失败: %v", input, err)
+		}
+		if !bytes.Equal(got, raw) {
+			t.Fatalf("解码 %q 得到 %x，期望 %x", input, got, raw)
+		}
+	}
+}

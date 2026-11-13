@@ -15,16 +15,15 @@ const DefaultAPIURL = "https://filedrop.app"
 const EnvAPIURL = "FILEDROP_API_URL"
 
 // Config 是持久化到磁盘的内容：只有令牌和账号展示名。
-// API 地址刻意不落盘——它只来自默认值或环境变量，
-// 这样误用 --api 指向临时服务器后，后续命令不会莫名沿用旧地址。
+// API 地址刻意不落盘——它只来自默认值或 FILEDROP_API_URL，
+// 这样临时指向测试服务器后，后续命令不会莫名沿用旧地址。
 type Config struct {
 	Token string `json:"token,omitempty"`
 	// Account 只用于 whoami 的提示，随时可以由服务端重新获取。
 	Account string `json:"account,omitempty"`
 
-	path    string
-	apiURL  string
-	apiFrom string
+	path   string
+	apiURL string
 }
 
 // Path 返回配置文件路径：
@@ -48,7 +47,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg := &Config{path: path, apiURL: DefaultAPIURL, apiFrom: "默认地址"}
+	cfg := &Config{path: path, apiURL: DefaultAPIURL}
 	raw, err := os.ReadFile(path)
 	switch {
 	case err == nil:
@@ -63,25 +62,12 @@ func Load() (*Config, error) {
 	cfg.path = path
 	if env := os.Getenv(EnvAPIURL); env != "" {
 		cfg.apiURL = trimSlash(env)
-		cfg.apiFrom = EnvAPIURL
 	}
 	return cfg, nil
 }
 
 // APIURL 返回当前生效的 API 地址。
 func (c *Config) APIURL() string { return c.apiURL }
-
-// APIURLSource 说明地址来自哪里，用于 whoami 与排错。
-func (c *Config) APIURLSource() string { return c.apiFrom }
-
-// SetAPIURL 覆盖 API 地址（来自 --api 参数）。
-func (c *Config) SetAPIURL(url string) {
-	if url == "" {
-		return
-	}
-	c.apiURL = trimSlash(url)
-	c.apiFrom = "--api"
-}
 
 func trimSlash(url string) string {
 	for len(url) > 1 && url[len(url)-1] == '/' {
@@ -124,6 +110,3 @@ func (c *Config) Save() error {
 	}
 	return os.Rename(tmp.Name(), c.path)
 }
-
-// FilePath 返回当前配置文件的位置。
-func (c *Config) FilePath() string { return c.path }

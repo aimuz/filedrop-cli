@@ -69,12 +69,11 @@ func TestCorruptConfig(t *testing.T) {
 func TestAPIURLNotPersisted(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("FILEDROP_CONFIG", path)
-	t.Setenv(EnvAPIURL, "")
+	t.Setenv(EnvAPIURL, "http://localhost:8797/")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.SetAPIURL("http://localhost:8797/")
 	if cfg.APIURL() != "http://localhost:8797" {
 		t.Fatalf("应去掉末尾斜杠: %s", cfg.APIURL())
 	}

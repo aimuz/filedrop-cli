@@ -1,10 +1,9 @@
 package main
 
 // CLI 骨架：参数解析、命令表、帮助文本。
-// 具体命令的实现放在 main.go。
+// 各命令的实现放在同名文件里（login.go / share.go / save.go / account.go）。
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -47,8 +46,8 @@ type commandSpec struct {
 	bind    func(*pflag.FlagSet)
 }
 
-// commands 既用于分发，也用于打印用法——选项说明只在 bind* 里写一次。
-// 用函数而不是包级变量：命令实现会回头调用 printCommandUsage，包级变量会成初始化环。
+// commandTable 既用于分发，也用于打印用法——选项说明只在 bind* 里写一次。
+// 用函数而不是包级变量：每次调用都按需构造，没有初始化顺序问题。
 func commandTable() map[string]commandSpec {
 	return map[string]commandSpec{
 		"login": {
@@ -94,6 +93,16 @@ func commandTable() map[string]commandSpec {
 			synopsis: "filedrop quota",
 			summary:  "查看已用空间和上限，以及账号里有多少个文件。",
 		},
+		"help": {
+			run:      runHelpCommand,
+			synopsis: "filedrop help <命令>",
+			summary:  "查看某个命令的详细用法，例如 filedrop help save。不带命令名时打印总览。",
+		},
+		"version": {
+			run:      runVersion,
+			synopsis: "filedrop version",
+			summary:  "打印当前版本号。",
+		},
 	}
 }
 
@@ -103,9 +112,26 @@ var aliases = map[string]string{
 	"delete": "rm",
 }
 
+// lookupCommand 先查别名，再查命令表。
+func lookupCommand(name string) (commandSpec, bool) {
+	if target, ok := aliases[name]; ok {
+		name = target
+	}
+	spec, ok := commandTable()[name]
+	return spec, ok
+}
+
+// usageFor 用命令表里的 synopsis 生成「用法」提示，避免各处重复抄一行用法。
+func usageFor(name string) error {
+	if spec, ok := lookupCommand(name); ok {
+		return usagef("用法：%s", spec.synopsis)
+	}
+	return usagef("用法：filedrop help %s", name)
+}
+
 // printCommandUsage 打印单个命令的用法；没登记的命令退回总览。
 func printCommandUsage(name string) {
-	spec, ok := commandTable()[name]
+	spec, ok := lookupCommand(name)
 	if !ok {
 		fmt.Print(usage)
 		return
@@ -159,7 +185,7 @@ func parseOnlyArgs(name string, args []string) error {
 func singleTarget(fs *pflag.FlagSet) (string, error) {
 	switch fs.NArg() {
 	case 0:
-		return "", usagef("用法：filedrop save <链接 | ID[#密钥]> [--out DIR]")
+		return "", usageFor("save")
 	case 1:
 		return fs.Arg(0), nil
 	default:
@@ -167,11 +193,43 @@ func singleTarget(fs *pflag.FlagSet) (string, error) {
 	}
 }
 
+// runHelp 打印某个命令的用法。
+func runHelp(name string) error {
+	if _, ok := lookupCommand(name); !ok {
+		return usagef("没有这个命令：%q", name)
+	}
+	printCommandUsage(name)
+	return errHelp
+}
+
+// runHelpCommand 是 `filedrop help` 的实现。
+func runHelpCommand(args []string) error {
+	fs := newFlags("help")
+	if err := parse(fs, args); err != nil {
+		return err
+	}
+	switch fs.NArg() {
+	case 0:
+		fmt.Print(usage)
+		return nil
+	case 1:
+		return runHelp(fs.Arg(0))
+	default:
+		return usagef("help 只接受一个命令名，多余参数：%v", fs.Args()[1:])
+	}
+}
+
+// runVersion 是 `filedrop version` 的实现。
+func runVersion(args []string) error {
+	if err := parseOnlyArgs("version", args); err != nil {
+		return err
+	}
+	fmt.Println("filedrop", version)
+	return nil
+}
+
 // version 由构建脚本通过 -ldflags "-X main.version=..." 注入。
 var version = "dev"
-
-// ctx 是整条命令的生命周期；以后要接 signal.NotifyContext 时改这一处即可。
-var ctx = context.Background()
 
 const usage = `filedrop — 端到端加密的文件传递
 

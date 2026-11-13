@@ -31,3 +31,12 @@ func TestAliasesPointToRealCommands(t *testing.T) {
 		}
 	}
 }
+
+// 新加命令时别忘了写进总览：命令表里有、usage 里没有，用户就找不到它。
+func TestUsageListsEveryCommand(t *testing.T) {
+	for name := range commandTable() {
+		if !strings.Contains(usage, "filedrop "+name) {
+			t.Errorf("总览里缺少 %s", name)
+		}
+	}
+}

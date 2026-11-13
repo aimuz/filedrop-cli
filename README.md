@@ -64,6 +64,9 @@ filedrop share --clipboard
 filedrop share 报告.pdf --copy
 ```
 
+大文件会分片并行上传，不用等前一块传完再传下一块。传输中按 `Ctrl-C` 可以随时取消。
+一次分享多个文件时，`--copy` 会把所有链接一起放进剪贴板（每行一个）。
+
 ### 下载文件
 
 ```bash
@@ -76,7 +79,7 @@ filedrop save "https://filedrop.app/d/aBcDeFgHiJkLmNoPqRsTuV#xYz..."
 - 想直接交给别的程序处理（比如解压、转格式）：`filedrop save <链接> --out -` 会把内容输出到终端，可以接管道。
 - 如果对方发来的是**口令链接**（链接里没有 `#` 那一段），运行后按提示输入口令即可。
 
-网速不好也没关系：下载中断只会重试那一小段，不用从头再来。想快一点可以调高 `--concurrency`（默认为 4），比如 `--concurrency 8`。
+网速不好也没关系：下载中断只会重试那一小段，不用从头再来。想快一点可以调高 `--concurrency`（默认为 4），比如 `--concurrency 8`。传输中按 `Ctrl-C` 会取消下载并删掉没写完的文件。
 
 ### 管理已经发出的文件
 

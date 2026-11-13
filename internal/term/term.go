@@ -44,8 +44,8 @@ func Green(s string) string { return paint("32", s) }
 func Dim(s string) string   { return paint("2", s) }
 func Bold(s string) string  { return paint("1", s) }
 
-// IsTTY 判断标准输入是否接在终端上。
-func IsTTY() bool {
+// isTTY 判断标准输入是否接在终端上。
+func isTTY() bool {
 	info, err := os.Stdin.Stat()
 	if err != nil {
 		return false
@@ -65,7 +65,7 @@ var ErrEmptyInput = errors.New("没有读到输入")
 func ReadPassword(prompt string) (string, error) {
 	fmt.Fprint(os.Stderr, prompt)
 	defer fmt.Fprintln(os.Stderr)
-	if !IsTTY() {
+	if !isTTY() {
 		return readLine()
 	}
 	old, err := disableEcho()
@@ -89,7 +89,7 @@ func readLine() (string, error) {
 	return line, err
 }
 
-// Progress 在终端里画一行进度；输出不是终端时每次只打印一行摘要。
+// Progress 在终端里画一行进度；输出不是终端时保持安静，避免污染管道。
 type Progress struct {
 	out     io.Writer
 	enabled bool
@@ -158,6 +158,17 @@ func (p *Progress) Finish() {
 	defer p.mu.Unlock()
 	p.done = p.total
 	p.renderLocked()
+	fmt.Fprintln(p.out)
+}
+
+// Abort 结束进度行但不算完成：失败或取消时换行，
+// 免得后面的错误提示接在进度条尾巴上。
+func (p *Progress) Abort() {
+	if p == nil || !p.enabled {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	fmt.Fprintln(p.out)
 }
 

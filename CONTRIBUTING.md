@@ -31,11 +31,12 @@ pnpm --filter @filedrop/api test
 
 | 目录 | 职责 |
 | --- | --- |
-| `cmd/filedrop` | 命令行入口：参数解析（`cli.go`）、各命令实现（`main.go`） |
+| `cmd/filedrop` | 命令行入口：分发与信号处理（`main.go`）、命令表与帮助（`cli.go`）、各命令实现（`login.go` / `share.go` / `save.go` / `account.go`） |
 | `internal/crypto` | 与 `packages/crypto` 逐字节兼容的加密协议 |
 | `internal/share` | 加密并上传，产出链接 |
 | `internal/filex` | 下载、解密、写盘（并行分块 + 断点重试） |
 | `internal/api` | 服务端 HTTP 接口 |
+| `internal/httpx` | 访问对象存储的 HTTP 客户端（分片并发用） |
 | `internal/auth` | 设备码登录 |
 | `internal/config` | 本地配置 |
 | `internal/term` | 终端输出：颜色、进度、口令输入、剪贴板 |

@@ -69,6 +69,14 @@ func NewWithVersion(baseURL, token, version string) *Client {
 	}
 }
 
+// WithToken 返回共享 HTTP 客户端与 User-Agent 的副本，只换令牌。
+// 登录轮询拿到令牌后用它发请求，省得再拼一个版本号对不上的客户端。
+func (c *Client) WithToken(token string) *Client {
+	clone := *c
+	clone.Token = token
+	return &clone
+}
+
 type apiErrorBody struct {
 	Error struct {
 		Code    string `json:"code"`

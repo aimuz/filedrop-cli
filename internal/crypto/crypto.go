@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
@@ -67,10 +68,15 @@ var ErrWrongPassword = errors.New("口令不正确")
 // Base64URL 编码，不带 = 填充。
 func Base64URL(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 
-// FromBase64URL 解码；接受标准与 URL 两种字母表，便于处理手工复制的链接。
+// FromBase64URL 解码。链接常被手工复制，可能带 = 填充或标准字母表（+/），
+// 这里都容忍；真正的长度校验由调用者完成。
 func FromBase64URL(s string) ([]byte, error) {
 	if s == "" {
 		return nil, nil
+	}
+	s = strings.TrimRight(s, "=")
+	if strings.ContainsAny(s, "+/") {
+		s = strings.NewReplacer("+", "-", "/", "_").Replace(s)
 	}
 	return base64.RawURLEncoding.DecodeString(s)
 }
@@ -193,14 +199,6 @@ func chunkAAD(fileID string, index int, last bool) aad {
 		out[len(out)-1] = 1
 	}
 	return out
-}
-
-// ChunkAAD 是分块的附加数据：版本前缀 ‖ fileId ‖ 序号 ‖ 是否最后一块。
-//
-// 保留切片形式供测试与外部实现对照；加密/解密走 chunkAAD，避免每次堆分配。
-func ChunkAAD(fileID string, index int, last bool) []byte {
-	a := chunkAAD(fileID, index, last)
-	return a[:]
 }
 
 func metaAAD(fileID string) []byte {

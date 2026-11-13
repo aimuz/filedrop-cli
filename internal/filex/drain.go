@@ -11,6 +11,7 @@ import (
 
 	"github.com/aimuz/filedrop-cli/internal/api"
 	"github.com/aimuz/filedrop-cli/internal/crypto"
+	"github.com/aimuz/filedrop-cli/internal/httpx"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
@@ -57,7 +58,11 @@ func newTask(client *api.Client, fileID, downloadURL string, info *api.FileInfo,
 		out:           out,
 		progress:      progress,
 		source: newDownloadSource(downloadURL, func(ctx context.Context) (string, error) {
-			return downloadAgain(ctx, client, fileID)
+			url, err := client.Download(ctx, fileID)
+			if err != nil {
+				return "", downloadError(err)
+			}
+			return url, nil
 		}),
 	}
 }
@@ -76,9 +81,16 @@ type chunk struct {
 // 写盘方式取决于目标：
 //   - 文件：每块解密后 WriteAt 到自己的偏移，块之间互不等待。
 //   - 标准输出：管道只能顺序写，按块号排队输出。
-func (t *task) Download(ctx context.Context, concurrency int) error {
+func (t *task) Download(ctx context.Context, concurrency int) (err error) {
 	if t.progress != nil {
 		t.progress.Start("下载", t.meta.Size)
+		defer func() {
+			if err != nil {
+				t.progress.Abort()
+			} else {
+				t.progress.Finish()
+			}
+		}()
 	}
 
 	workers := min(max(1, concurrency), t.meta.ChunkCount)
@@ -96,9 +108,6 @@ func (t *task) Download(ctx context.Context, concurrency int) error {
 	}
 	if written != t.meta.Size {
 		return errors.New("解密后的大小与元数据不一致，文件可能不完整")
-	}
-	if t.progress != nil {
-		t.progress.Finish()
 	}
 	return nil
 }
@@ -173,15 +182,25 @@ func (t *task) direct(ctx context.Context, workers int, cancel context.CancelFun
 		firstErr error
 	)
 	for item := range t.fetchAll(ctx, workers) {
+		if firstErr != nil {
+			// 已经失败了：其余的块直接归还缓冲，不再写盘。
+			item.recycle()
+			continue
+		}
+		if item.err != nil {
+			// 网络错误要原样报出来；不能丢给解密器，否则会误报成「校验失败」。
+			firstErr = t.chunkError(item)
+			item.recycle()
+			cancel()
+			continue
+		}
 		opened, err := t.openChunk(&plain, item)
 		if err == nil {
 			err = t.out.writeAt(opened, int64(item.index)*crypto.ChunkSize)
 		}
 		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-				cancel()
-			}
+			firstErr = err
+			cancel()
 			continue
 		}
 		written += int64(len(opened))
@@ -217,7 +236,7 @@ func (t *task) pipeline(ctx context.Context, workers int, cancel context.CancelF
 			continue
 		}
 		if item.err != nil {
-			firstErr = fmt.Errorf("第 %d/%d 块下载失败: %w", item.index+1, t.meta.ChunkCount, item.err)
+			firstErr = t.chunkError(item)
 			item.recycle()
 			cancel()
 			continue
@@ -252,6 +271,11 @@ func (t *task) pipeline(ctx context.Context, workers int, cancel context.CancelF
 		return 0, firstErr
 	}
 	return written, nil
+}
+
+// chunkError 把单块的下载错误补上块号；块级失败和解密失败要能区分开。
+func (t *task) chunkError(item chunk) error {
+	return fmt.Errorf("第 %d/%d 块下载失败: %w", item.index+1, t.meta.ChunkCount, item.err)
 }
 
 // openChunk 解密一块、裁掉最后一块的填充，并归还密文缓冲。
@@ -338,7 +362,7 @@ func (s *downloadSource) fetch(ctx context.Context, buffer []byte, index int, en
 		if err != nil {
 			return nil, err
 		}
-		body, err := fetchRange(buffer, url, start, end)
+		body, err := fetchRange(ctx, buffer, url, start, end)
 		if err == nil {
 			return body, nil
 		}
@@ -389,13 +413,14 @@ type httpStatusError struct{ code int }
 func (e *httpStatusError) Error() string { return fmt.Sprintf("下载失败: HTTP %d", e.code) }
 
 // fetchRange 读 [start, end] 这段密文到 dst（容量不足时扩容）。
-func fetchRange(dst []byte, rawURL string, start, end int64) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+func fetchRange(ctx context.Context, dst []byte, rawURL string, start, end int64) ([]byte, error) {
+	// 必须带上 ctx：否则取消后正在传的块会继续占着连接，Ctrl-C 看起来「没反应」。
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, &fatalError{err}
 	}
 	req.Header.Set("range", fmt.Sprintf("bytes=%d-%d", start, end))
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpx.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("下载失败: %w", err)
 	}
