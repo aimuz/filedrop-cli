@@ -2,18 +2,17 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/aimuz/filedrop-cli/internal/filex"
 	"github.com/aimuz/filedrop-cli/internal/i18n"
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
-func runSave(args []string) error {
+func (a *app) runSave(args []string) error {
 	fs := newFlags("save")
 	var opts saveFlags
 	bindSaveFlags(fs, &opts)
-	if err := parse(fs, args); err != nil {
+	if err := a.parse(fs, args); err != nil {
 		return err
 	}
 	target, err := singleTarget(fs)
@@ -25,7 +24,7 @@ func runSave(args []string) error {
 		return usage(i18n.C().CLI.ConcurrencyNegative)
 	}
 
-	c, _, err := client()
+	c, _, err := a.client()
 	if err != nil {
 		return err
 	}
@@ -35,7 +34,7 @@ func runSave(args []string) error {
 		if pass != "" {
 			return pass, nil
 		}
-		value, err := term.ReadPassword(i18n.C().CLI.SavePasswordPrompt)
+		value, err := a.console.ReadPassword(i18n.C().CLI.SavePasswordPrompt)
 		if err != nil {
 			return "", err
 		}
@@ -43,10 +42,10 @@ func runSave(args []string) error {
 		return value, nil
 	}
 
-	result, err := filex.Save(ctx, c, target, filex.SaveOptions{
+	result, err := filex.Save(a.ctx, c, target, filex.SaveOptions{
 		OutDir:      opts.out,
 		Password:    askPassword,
-		Progress:    term.NewProgress(os.Stderr),
+		Progress:    term.NewProgress(a.errOut),
 		Concurrency: opts.concurrency,
 	})
 	if err != nil {
@@ -55,6 +54,6 @@ func runSave(args []string) error {
 	if opts.out == "-" {
 		return nil
 	}
-	fmt.Fprintln(os.Stderr, term.Green(fmt.Sprintf(i18n.C().CLI.Saved, result.Path)))
+	fmt.Fprintln(a.errOut, term.Green(fmt.Sprintf(i18n.C().CLI.Saved, result.Path)))
 	return nil
 }

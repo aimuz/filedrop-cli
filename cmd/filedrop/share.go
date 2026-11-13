@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/aimuz/filedrop-cli/internal/i18n"
@@ -15,11 +14,11 @@ import (
 // 刻意不做选项：可选值越多，越容易让人以为「长保留」是免费的。
 const shareTTLSeconds = 24 * 60 * 60
 
-func runShare(args []string) error {
+func (a *app) runShare(args []string) error {
 	fs := newFlags("share")
 	var opts shareFlags
 	bindShareFlags(fs, &opts)
-	if err := parse(fs, args); err != nil {
+	if err := a.parse(fs, args); err != nil {
 		return err
 	}
 	files := fs.Args()
@@ -30,7 +29,7 @@ func runShare(args []string) error {
 	if len(files) == 0 && !opts.clipboard {
 		return usageFor("share")
 	}
-	c, cfg, err := client()
+	c, cfg, err := a.client()
 	if err != nil {
 		return err
 	}
@@ -38,7 +37,7 @@ func runShare(args []string) error {
 		return errors.New(i18n.C().CLI.ShareNeedsLogin)
 	}
 
-	pass, err := askPassword(opts.password)
+	pass, err := a.askPassword(opts.password)
 	if err != nil {
 		return err
 	}
@@ -52,43 +51,43 @@ func runShare(args []string) error {
 		TTLSeconds:   shareTTLSeconds,
 		MaxDownloads: opts.maxDownloads,
 		Password:     pass,
-		Progress:     term.NewProgress(os.Stderr),
+		Progress:     term.NewProgress(a.errOut),
 	}
 
 	links := make([]string, 0, len(contents))
 	for _, content := range contents {
-		link, err := share.Upload(ctx, c, content, uploadOpts)
+		link, err := share.Upload(a.ctx, c, content, uploadOpts)
 		if err != nil {
 			return fmt.Errorf("%s: %w", content.Name, err)
 		}
 		links = append(links, link)
-		fmt.Println(link)
+		fmt.Fprintln(a.out, link)
 	}
 
 	if opts.password {
-		fmt.Fprintln(os.Stderr, term.Dim(i18n.C().CLI.PasswordHint))
+		fmt.Fprintln(a.errOut, term.Dim(i18n.C().CLI.PasswordHint))
 	} else {
-		fmt.Fprintln(os.Stderr, term.Dim(i18n.C().CLI.KeyHint))
+		fmt.Fprintln(a.errOut, term.Dim(i18n.C().CLI.KeyHint))
 	}
 	if opts.copyLink {
 		if err := term.CopyToClipboard(strings.Join(links, "\n")); err != nil {
-			fmt.Fprintln(os.Stderr, term.Dim(fmt.Sprintf(i18n.C().CLI.CopyFailed, err)))
+			fmt.Fprintln(a.errOut, term.Dim(fmt.Sprintf(i18n.C().CLI.CopyFailed, err)))
 		}
 	}
 	return nil
 }
 
 // askPassword 在 --password 时让用户输入两遍口令并校验。
-func askPassword(enabled bool) (string, error) {
+func (a *app) askPassword(enabled bool) (string, error) {
 	if !enabled {
 		return "", nil
 	}
 	t := i18n.C().CLI
-	pass, err := term.ReadPassword(t.SetPasswordPrompt)
+	pass, err := a.console.ReadPassword(t.SetPasswordPrompt)
 	if err != nil {
 		return "", err
 	}
-	again, err := term.ReadPassword(t.RepeatPasswordPrompt)
+	again, err := a.console.ReadPassword(t.RepeatPasswordPrompt)
 	if err != nil {
 		return "", err
 	}

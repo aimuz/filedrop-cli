@@ -10,9 +10,10 @@ const testLink = "https://filedrop.app/d/fQdGQ7ALzoyhsnN01te_GA#X4pA8CAxewgHYp3v
 // parseSave 用与 runSave 相同的方式解析参数，返回目标与选项。
 func parseSave(t *testing.T, args []string) (target string, opts saveFlags, err error) {
 	t.Helper()
+	a := testApp()
 	fs := newFlags("save")
 	bindSaveFlags(fs, &opts)
-	if err := parse(fs, args); err != nil {
+	if err := a.parse(fs, args); err != nil {
 		return "", opts, err
 	}
 	target, err = singleTarget(fs)
@@ -65,10 +66,11 @@ func TestSaveRejectsExtraTargets(t *testing.T) {
 }
 
 func TestShareArgsInterspersed(t *testing.T) {
+	a := testApp()
 	fs := newFlags("share")
 	var opts shareFlags
 	bindShareFlags(fs, &opts)
-	if err := parse(fs, []string{"a.pdf", "--password", "b.zip", "--max-downloads", "3"}); err != nil {
+	if err := a.parse(fs, []string{"a.pdf", "--password", "b.zip", "--max-downloads", "3"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := fs.Args(); len(got) != 2 || got[0] != "a.pdf" || got[1] != "b.zip" {
@@ -81,15 +83,16 @@ func TestShareArgsInterspersed(t *testing.T) {
 
 func TestRmIDsArePositional(t *testing.T) {
 	// 回归测试：ID 曾被 flag 包静默丢掉，命令假装删除成功。
+	a := testApp()
 	fs := newFlags("rm")
-	if err := parse(fs, []string{"fQdGQ7ALzoyhsnN01te_GA", "ZQdGQ7ALzoyhsnN01te_GA"}); err != nil {
+	if err := a.parse(fs, []string{"fQdGQ7ALzoyhsnN01te_GA", "ZQdGQ7ALzoyhsnN01te_GA"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := fs.Args(); len(got) != 2 {
 		t.Fatalf("应拿到 2 个 ID，得到 %q", got)
 	}
 
-	if err := parse(newFlags("rm"), []string{"--force", "x"}); err == nil {
+	if err := a.parse(newFlags("rm"), []string{"--force", "x"}); err == nil {
 		t.Fatal("rm 没有选项，传开关必须报错")
 	}
 }

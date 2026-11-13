@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/aimuz/filedrop-cli/internal/api"
 	"github.com/aimuz/filedrop-cli/internal/auth"
@@ -11,21 +10,21 @@ import (
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
-func runLogin(args []string) error {
+func (a *app) runLogin(args []string) error {
 	fs := newFlags("login")
 	var opts loginFlags
 	bindLoginFlags(fs, &opts)
-	if err := parse(fs, args); err != nil {
+	if err := a.parse(fs, args); err != nil {
 		return err
 	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-	token, name, err := auth.Login(ctx, api.NewWithVersion(cfg.APIURL(), "", version), auth.LoginOptions{
+	token, name, err := auth.Login(a.ctx, api.NewWithVersion(cfg.APIURL(), "", version), auth.LoginOptions{
 		ClientName: fmt.Sprintf("filedrop-cli/%s", version),
 		NoBrowser:  opts.noBrowser,
-		Out:        os.Stdout,
+		Out:        a.out,
 	})
 	if err != nil {
 		return err
@@ -35,49 +34,49 @@ func runLogin(args []string) error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	fmt.Println(term.Green(i18n.C().CLI.LoggedIn))
+	fmt.Fprintln(a.out, term.Green(i18n.C().CLI.LoggedIn))
 	return nil
 }
 
-func runLogout(args []string) error {
-	if err := parseOnlyArgs("logout", args); err != nil {
+func (a *app) runLogout(args []string) error {
+	if err := a.parseOnlyArgs("logout", args); err != nil {
 		return err
 	}
-	c, cfg, err := client()
+	c, cfg, err := a.client()
 	if err != nil {
 		return err
 	}
 	if cfg.Token == "" {
-		fmt.Println(i18n.C().CLI.NotLoggedIn)
+		fmt.Fprintln(a.out, i18n.C().CLI.NotLoggedIn)
 		return nil
 	}
 	// 服务端撤销失败也照样清本地，避免留下一个用不了又删不掉的令牌。
-	_ = c.Logout(ctx)
+	_ = c.Logout(a.ctx)
 	cfg.Token = ""
 	cfg.Account = ""
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	fmt.Println(i18n.C().CLI.LoggedOut)
+	fmt.Fprintln(a.out, i18n.C().CLI.LoggedOut)
 	return nil
 }
 
-func runWhoami(args []string) error {
-	if err := parseOnlyArgs("whoami", args); err != nil {
+func (a *app) runWhoami(args []string) error {
+	if err := a.parseOnlyArgs("whoami", args); err != nil {
 		return err
 	}
-	c, err := authedClient()
+	c, err := a.authedClient()
 	if err != nil {
 		return err
 	}
-	info, err := c.Session(ctx)
+	info, err := c.Session(a.ctx)
 	if err != nil {
 		return err
 	}
-	if info.DisplayName != "" {
-		fmt.Println(fmt.Sprintf(i18n.C().CLI.CurrentAccount, info.DisplayName))
-	} else {
-		fmt.Println(fmt.Sprintf(i18n.C().CLI.CurrentAccount, info.UserID))
+	name := info.DisplayName
+	if name == "" {
+		name = info.UserID
 	}
+	fmt.Fprintln(a.out, fmt.Sprintf(i18n.C().CLI.CurrentAccount, name))
 	return nil
 }

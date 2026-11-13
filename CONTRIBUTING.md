@@ -31,16 +31,20 @@ pnpm --filter @filedrop/api test
 
 | 目录 | 职责 |
 | --- | --- |
-| `cmd/filedrop` | 命令行入口：分发与信号处理（`main.go`）、命令表与帮助（`cli.go`）、各命令实现（`login.go` / `share.go` / `save.go` / `account.go`） |
-| `internal/crypto` | 与 `packages/crypto` 逐字节兼容的加密协议 |
-| `internal/share` | 加密并上传，产出链接 |
-| `internal/filex` | 下载、解密、写盘（并行分块 + 断点重试） |
-| `internal/api` | 服务端 HTTP 接口 |
+| `cmd/filedrop` | 命令行入口：进程边界与信号（`main.go`）、注入依赖（`app.go`）、命令表（`command.go`）、帮助与参数（`help.go`）、各命令实现（`login.go` / `share.go` / `save.go` / `account.go`） |
+| `internal/crypto` | 与 `packages/crypto` 逐字节兼容的加密协议（尺寸、密钥、元数据、口令外壳分文件） |
+| `internal/share` | 加密并上传，产出链接（内容、上传、链接分文件） |
+| `internal/filex` | 下载、解密、写盘（任务编排与预签名地址/重试分文件） |
+| `internal/api` | 服务端 HTTP 接口（`auth.go` / `account.go` / `files.go`） |
 | `internal/httpx` | 访问对象存储的 HTTP 客户端（分片并发用） |
 | `internal/auth` | 设备码登录 |
 | `internal/config` | 本地配置 |
 | `internal/i18n` | 界面文案与语言检测（`zh` / `en`） |
-| `internal/term` | 终端输出：颜色、进度、口令输入、剪贴板 |
+| `internal/term` | 终端输入输出：颜色、进度、口令、剪贴板、格式化 |
+
+命令层不直接碰 `os.Stdout` / `os.Stderr`：`app` 收拢了上下文、两个输出流和口令输入，
+命令是 `app` 的方法。测试里用 `testApp` 换成 buffer，就能把 `list` / `rm` / `quota`
+这类命令通过 httptest 完整跑一遍，不需要真实终端或账号。
 
 ## 文案与翻译
 
