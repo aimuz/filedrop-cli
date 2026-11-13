@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
-func (a *app) runLogin(args []string) error {
+func (a *App) runLogin(args []string) error {
 	fs := newFlags("login")
 	var opts loginFlags
 	bindLoginFlags(fs, &opts)
@@ -21,8 +21,8 @@ func (a *app) runLogin(args []string) error {
 	if err != nil {
 		return err
 	}
-	token, name, err := auth.Login(a.ctx, api.NewWithVersion(cfg.APIURL(), "", version), auth.LoginOptions{
-		ClientName: fmt.Sprintf("filedrop-cli/%s", version),
+	token, name, err := auth.Login(a.ctx, api.NewWithVersion(cfg.APIURL(), "", a.version), auth.LoginOptions{
+		ClientName: fmt.Sprintf("filedrop-cli/%s", a.version),
 		NoBrowser:  opts.noBrowser,
 		Out:        a.out,
 	})
@@ -38,7 +38,7 @@ func (a *app) runLogin(args []string) error {
 	return nil
 }
 
-func (a *app) runLogout(args []string) error {
+func (a *App) runLogout(args []string) error {
 	if err := a.parseOnlyArgs("logout", args); err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (a *app) runLogout(args []string) error {
 	return nil
 }
 
-func (a *app) runWhoami(args []string) error {
+func (a *App) runWhoami(args []string) error {
 	if err := a.parseOnlyArgs("whoami", args); err != nil {
 		return err
 	}

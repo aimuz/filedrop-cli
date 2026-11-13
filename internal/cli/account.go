@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
-func (a *app) runList(args []string) error {
+func (a *App) runList(args []string) error {
 	if err := a.parseOnlyArgs("list", args); err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func (a *app) runList(args []string) error {
 	return nil
 }
 
-func (a *app) runRm(args []string) error {
+func (a *App) runRm(args []string) error {
 	fs := newFlags("rm")
 	if err := a.parse(fs, args); err != nil {
 		return err
@@ -60,7 +60,7 @@ func (a *app) runRm(args []string) error {
 	return nil
 }
 
-func (a *app) runQuota(args []string) error {
+func (a *App) runQuota(args []string) error {
 	if err := a.parseOnlyArgs("quota", args); err != nil {
 		return err
 	}

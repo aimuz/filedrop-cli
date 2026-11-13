@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
-func (a *app) runSave(args []string) error {
+func (a *App) runSave(args []string) error {
 	fs := newFlags("save")
 	var opts saveFlags
 	bindSaveFlags(fs, &opts)

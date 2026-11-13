@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"github.com/aimuz/filedrop-cli/internal/i18n"
@@ -6,9 +6,9 @@ import (
 )
 
 // commandSpec 描述一个命令：怎么跑、怎么打用法、有哪些选项。
-// run 写成 (*app) 的方法表达式，命令实现就能拿到注入的输出与上下文。
+// run 写成 (*App) 的方法表达式，命令实现就能拿到注入的输出与上下文。
 type commandSpec struct {
-	run      func(*app, []string) error
+	run      func(*App, []string) error
 	synopsis string
 	// summary 是一两句话的说明，打印在用法行之后。
 	summary string
@@ -21,55 +21,55 @@ func commandTable() map[string]commandSpec {
 	t := i18n.C().CLI
 	return map[string]commandSpec{
 		"login": {
-			run:      (*app).runLogin,
+			run:      (*App).runLogin,
 			synopsis: t.SynLogin,
 			summary:  t.SumLogin,
 			bind:     func(fs *pflag.FlagSet) { bindLoginFlags(fs, &loginFlags{}) },
 		},
 		"logout": {
-			run:      (*app).runLogout,
+			run:      (*App).runLogout,
 			synopsis: t.SynLogout,
 			summary:  t.SumLogout,
 		},
 		"whoami": {
-			run:      (*app).runWhoami,
+			run:      (*App).runWhoami,
 			synopsis: t.SynWhoami,
 			summary:  t.SumWhoami,
 		},
 		"share": {
-			run:      (*app).runShare,
+			run:      (*App).runShare,
 			synopsis: t.SynShare,
 			summary:  t.SumShare,
 			bind:     func(fs *pflag.FlagSet) { bindShareFlags(fs, &shareFlags{}) },
 		},
 		"save": {
-			run:      (*app).runSave,
+			run:      (*App).runSave,
 			synopsis: t.SynSave,
 			summary:  t.SumSave,
 			bind:     func(fs *pflag.FlagSet) { bindSaveFlags(fs, &saveFlags{}) },
 		},
 		"list": {
-			run:      (*app).runList,
+			run:      (*App).runList,
 			synopsis: t.SynList,
 			summary:  t.SumList,
 		},
 		"rm": {
-			run:      (*app).runRm,
+			run:      (*App).runRm,
 			synopsis: t.SynRm,
 			summary:  t.SumRm,
 		},
 		"quota": {
-			run:      (*app).runQuota,
+			run:      (*App).runQuota,
 			synopsis: t.SynQuota,
 			summary:  t.SumQuota,
 		},
 		"help": {
-			run:      (*app).runHelpCommand,
+			run:      (*App).runHelpCommand,
 			synopsis: t.SynHelp,
 			summary:  t.SumHelp,
 		},
 		"version": {
-			run:      (*app).runVersion,
+			run:      (*App).runVersion,
 			synopsis: t.SynVersion,
 			summary:  t.SumVersion,
 		},

@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ import (
 // 刻意不做选项：可选值越多，越容易让人以为「长保留」是免费的。
 const shareTTLSeconds = 24 * 60 * 60
 
-func (a *app) runShare(args []string) error {
+func (a *App) runShare(args []string) error {
 	fs := newFlags("share")
 	var opts shareFlags
 	bindShareFlags(fs, &opts)
@@ -78,7 +78,7 @@ func (a *app) runShare(args []string) error {
 }
 
 // askPassword 在 --password 时让用户输入两遍口令并校验。
-func (a *app) askPassword(enabled bool) (string, error) {
+func (a *App) askPassword(enabled bool) (string, error) {
 	if !enabled {
 		return "", nil
 	}

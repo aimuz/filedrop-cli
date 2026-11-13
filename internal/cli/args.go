@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"github.com/aimuz/filedrop-cli/internal/i18n"

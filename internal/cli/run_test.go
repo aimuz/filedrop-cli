@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -20,8 +20,13 @@ func testRun(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
-	a := newApp(context.Background(), out, errOut, strings.NewReader(""))
-	err = a.run(args)
+	a := New(Options{
+		Context: context.Background(),
+		In:      strings.NewReader(""),
+		Out:     out,
+		Err:     errOut,
+	})
+	err = a.Run(args)
 	return out.String(), errOut.String(), err
 }
 

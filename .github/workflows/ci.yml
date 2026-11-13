@@ -19,7 +19,7 @@ jobs:
       # go fix 发现的所有现代化改写应当已经合入；有输出说明有代码没跟上。
       - run: go fix -diff ./...
       - run: go test ./... -race -count=1
-      - run: go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o filedrop ./cmd/filedrop
+      - run: go build -trimpath -ldflags "-s -w -X github.com/aimuz/filedrop-cli/internal/cli.Version=${GITHUB_REF_NAME}" -o filedrop ./cmd/filedrop
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -47,7 +47,7 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           name="filedrop_${GITHUB_REF_NAME}_${{ matrix.goos }}_${{ matrix.goarch }}"
-          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "filedrop" ./cmd/filedrop
+          go build -trimpath -ldflags "-s -w -X github.com/aimuz/filedrop-cli/internal/cli.Version=${GITHUB_REF_NAME}" -o "filedrop" ./cmd/filedrop
           if [ "${{ matrix.goos }}" = "windows" ]; then
             mv filedrop.exe "${name}.exe"
           else

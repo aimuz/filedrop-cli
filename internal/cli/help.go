@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ import (
 )
 
 // parse 解析选项；帮助与解析错误都转成给用户看的提示。
-func (a *app) parse(fs *pflag.FlagSet, args []string) error {
+func (a *App) parse(fs *pflag.FlagSet, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
 			printCommandUsage(a.out, fs.Name())
@@ -24,7 +24,7 @@ func (a *app) parse(fs *pflag.FlagSet, args []string) error {
 }
 
 // parseOnlyArgs 用于没有选项的命令：任何开关都是错误。
-func (a *app) parseOnlyArgs(name string, args []string) error {
+func (a *App) parseOnlyArgs(name string, args []string) error {
 	return a.parse(newFlags(name), args)
 }
 
@@ -73,7 +73,7 @@ func singleTarget(fs *pflag.FlagSet) (string, error) {
 }
 
 // runHelp 打印某个命令的用法。
-func (a *app) runHelp(name string) error {
+func (a *App) runHelp(name string) error {
 	if _, ok := lookupCommand(name); !ok {
 		return usagef(i18n.C().CLI.NoSuchCommand, name)
 	}
@@ -82,7 +82,7 @@ func (a *app) runHelp(name string) error {
 }
 
 // runHelpCommand 是 `filedrop help` 的实现。
-func (a *app) runHelpCommand(args []string) error {
+func (a *App) runHelpCommand(args []string) error {
 	fs := newFlags("help")
 	if err := a.parse(fs, args); err != nil {
 		return err
@@ -99,10 +99,10 @@ func (a *app) runHelpCommand(args []string) error {
 }
 
 // runVersion 是 `filedrop version` 的实现。
-func (a *app) runVersion(args []string) error {
+func (a *App) runVersion(args []string) error {
 	if err := a.parseOnlyArgs("version", args); err != nil {
 		return err
 	}
-	fmt.Fprintln(a.out, "filedrop", version)
+	fmt.Fprintln(a.out, "filedrop", a.version)
 	return nil
 }
