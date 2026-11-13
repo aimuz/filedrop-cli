@@ -13,5 +13,6 @@ func testApp() *App {
 		In:      strings.NewReader(""),
 		Out:     io.Discard,
 		Err:     io.Discard,
+		Version: "dev",
 	})
 }

@@ -103,6 +103,14 @@ func (a *App) runVersion(args []string) error {
 	if err := a.parseOnlyArgs("version", args); err != nil {
 		return err
 	}
-	fmt.Fprintln(a.out, "filedrop", a.version)
+	fmt.Fprintln(a.out, versionLine(a.version, a.revision))
 	return nil
+}
+
+// versionLine 把版本与本地提交号拼成一行；发布版本没有提交号。
+func versionLine(version, revision string) string {
+	if revision == "" {
+		return "filedrop " + version
+	}
+	return fmt.Sprintf("filedrop %s (%s)", version, revision)
 }

@@ -25,6 +25,7 @@ func testRun(t *testing.T, args ...string) (stdout, stderr string, err error) {
 		In:      strings.NewReader(""),
 		Out:     out,
 		Err:     errOut,
+		Version: "dev",
 	})
 	err = a.Run(args)
 	return out.String(), errOut.String(), err

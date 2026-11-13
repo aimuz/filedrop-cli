@@ -25,33 +25,52 @@ import (
 // 没有注入时（例如 go install ...@latest）会退回构建信息里的模块版本。
 var Version = "dev"
 
-// resolvedVersion 返回实际展示的版本号。
-func resolvedVersion() string {
+// resolvedBuild 返回实际展示的版本号与（本地构建时的）短提交号。
+func resolvedBuild() (version, revision string) {
 	if Version != "dev" {
-		return Version
+		return Version, ""
 	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return Version
+		return Version, ""
 	}
-	return versionFromBuildInfo(info)
+	return buildFromInfo(info)
 }
 
-// versionFromBuildInfo 从模块构建信息里取版本。
+// buildFromInfo 从模块构建信息里取版本与提交号。
 //
 // 从本地源码树构建时 Main.Version 是 v0.0.0-时间-提交 的伪版本，
-// 且带有 vcs.revision；展示伪版本只会让人误以为是发布版，这种情况仍用 dev。
+// 展示伪版本只会让人误以为是发布版；这种情况用 dev，并附上短提交号。
 // go install module@version 从模块缓存构建，没有 vcs 信息，才是真正的发布版本。
-func versionFromBuildInfo(info *debug.BuildInfo) string {
-	if info.Main.Version == "" || info.Main.Version == "(devel)" {
-		return Version
-	}
+func buildFromInfo(info *debug.BuildInfo) (version, revision string) {
+	var vcsRevision string
+	var dirty bool
 	for _, setting := range info.Settings {
-		if setting.Key == "vcs.revision" {
-			return Version
+		switch setting.Key {
+		case "vcs.revision":
+			vcsRevision = setting.Value
+		case "vcs.modified":
+			dirty = setting.Value == "true"
 		}
 	}
-	return info.Main.Version
+	if vcsRevision != "" {
+		revision = shortRevision(vcsRevision)
+		if dirty {
+			revision += "-dirty"
+		}
+		return Version, revision
+	}
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version, ""
+	}
+	return Version, ""
+}
+
+func shortRevision(rev string) string {
+	if len(rev) > 7 {
+		return rev[:7]
+	}
+	return rev
 }
 
 // Options 控制一次 App 的构造。零值可直接使用：测试里通常只替换 Out/Err。
@@ -68,11 +87,12 @@ type Options struct {
 // 命令实现挂在它上面，避免各处直接摸 os.Stdout / os.Stderr 或依赖全局 ctx；
 // 测试里换成 bytes.Buffer 与 strings.Reader 就能完整跑一遍命令。
 type App struct {
-	ctx     context.Context
-	out     io.Writer
-	errOut  io.Writer
-	console *term.Console
-	version string
+	ctx      context.Context
+	out      io.Writer
+	errOut   io.Writer
+	console  *term.Console
+	version  string
+	revision string
 }
 
 // New 按 Options 创建一个 App。
@@ -89,15 +109,17 @@ func New(opts Options) *App {
 	if opts.Err == nil {
 		opts.Err = io.Discard
 	}
-	if opts.Version == "" {
-		opts.Version = resolvedVersion()
+	version, revision := opts.Version, ""
+	if version == "" {
+		version, revision = resolvedBuild()
 	}
 	return &App{
-		ctx:     opts.Context,
-		out:     opts.Out,
-		errOut:  opts.Err,
-		console: term.NewConsole(opts.In, opts.Err),
-		version: opts.Version,
+		ctx:      opts.Context,
+		out:      opts.Out,
+		errOut:   opts.Err,
+		console:  term.NewConsole(opts.In, opts.Err),
+		version:  version,
+		revision: revision,
 	}
 }
 
