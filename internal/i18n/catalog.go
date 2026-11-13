@@ -56,7 +56,8 @@ type CLIText struct {
 	FlagConcurrency  string
 	FlagNoBrowser    string
 
-	LoggedIn        string
+	AuthComplete    string
+	LoggedInAs      string
 	LoggedOut       string
 	NotLoggedIn     string
 	CurrentAccount  string

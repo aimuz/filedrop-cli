@@ -59,7 +59,8 @@ Command options:
 		FlagConcurrency:  "Number of chunks downloaded in parallel (0 = automatic, default 4)",
 		FlagNoBrowser:    "Print the link without opening a browser",
 
-		LoggedIn:        "Signed in.",
+		AuthComplete:    "✓ Authentication complete.",
+		LoggedInAs:      "✓ Logged in as %s",
 		LoggedOut:       "Signed out.",
 		NotLoggedIn:     "Not signed in.",
 		CurrentAccount:  "Signed in: %s",

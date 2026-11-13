@@ -91,7 +91,11 @@ func Login(ctx context.Context, client *api.Client, opts LoginOptions) (token, a
 			if err != nil {
 				return "", "", err
 			}
-			return poll.Token, session.DisplayName, nil
+			name := session.DisplayName
+			if name == "" {
+				name = session.UserID
+			}
+			return poll.Token, name, nil
 		case "denied":
 			return "", "", ErrDenied
 		case "expired":

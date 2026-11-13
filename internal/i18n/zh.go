@@ -59,7 +59,8 @@ var zhCatalog = Catalog{
 		FlagConcurrency:  "同时下载的分块数（0 表示自动，默认 4）",
 		FlagNoBrowser:    "只打印链接，不自动打开浏览器",
 
-		LoggedIn:        "已登录。",
+		AuthComplete:    "✓ 认证完成。",
+		LoggedInAs:      "✓ 已登录：%s",
 		LoggedOut:       "已退出登录。",
 		NotLoggedIn:     "当前没有登录。",
 		CurrentAccount:  "已登录：%s",

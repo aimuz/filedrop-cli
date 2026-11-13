@@ -7,7 +7,6 @@ import (
 	"github.com/aimuz/filedrop-cli/internal/auth"
 	"github.com/aimuz/filedrop-cli/internal/config"
 	"github.com/aimuz/filedrop-cli/internal/i18n"
-	"github.com/aimuz/filedrop-cli/internal/term"
 )
 
 func (a *App) runLogin(args []string) error {
@@ -34,8 +33,15 @@ func (a *App) runLogin(args []string) error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	fmt.Fprintln(a.out, term.Green(i18n.C().CLI.LoggedIn))
+	a.printLoginSuccess(name)
 	return nil
+}
+
+// printLoginSuccess 打印登录成功后的两行确认信息。
+func (a *App) printLoginSuccess(name string) {
+	t := i18n.C().CLI
+	fmt.Fprintln(a.out, t.AuthComplete)
+	fmt.Fprintln(a.out, fmt.Sprintf(t.LoggedInAs, name))
 }
 
 func (a *App) runLogout(args []string) error {
