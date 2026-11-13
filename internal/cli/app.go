@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -21,7 +22,37 @@ import (
 )
 
 // Version 由构建脚本通过 -ldflags "-X github.com/aimuz/filedrop-cli/internal/cli.Version=..." 注入。
+// 没有注入时（例如 go install ...@latest）会退回构建信息里的模块版本。
 var Version = "dev"
+
+// resolvedVersion 返回实际展示的版本号。
+func resolvedVersion() string {
+	if Version != "dev" {
+		return Version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return Version
+	}
+	return versionFromBuildInfo(info)
+}
+
+// versionFromBuildInfo 从模块构建信息里取版本。
+//
+// 从本地源码树构建时 Main.Version 是 v0.0.0-时间-提交 的伪版本，
+// 且带有 vcs.revision；展示伪版本只会让人误以为是发布版，这种情况仍用 dev。
+// go install module@version 从模块缓存构建，没有 vcs 信息，才是真正的发布版本。
+func versionFromBuildInfo(info *debug.BuildInfo) string {
+	if info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return Version
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" {
+			return Version
+		}
+	}
+	return info.Main.Version
+}
 
 // Options 控制一次 App 的构造。零值可直接使用：测试里通常只替换 Out/Err。
 type Options struct {
@@ -59,7 +90,7 @@ func New(opts Options) *App {
 		opts.Err = io.Discard
 	}
 	if opts.Version == "" {
-		opts.Version = Version
+		opts.Version = resolvedVersion()
 	}
 	return &App{
 		ctx:     opts.Context,
